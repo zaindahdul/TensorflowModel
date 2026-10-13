@@ -28,15 +28,26 @@ def get_or_none(path):
         raise
 
 
-def resolve_markets(target):
-    """Markets named by a ticker or kalshi.com link, which may point at a whole event."""
+def find_markets(target):
+    """Ticker named by a ticker or kalshi.com link, and its markets (None if Kalshi has none).
+
+    The ticker may point at a whole event, in which case every market in it is returned.
+    """
     ticker = target.split("?")[0].rstrip("/").split("/")[-1].upper()
     found = get_or_none(f"/markets/{ticker}")
     if found:
-        return [found["market"]]
+        return ticker, [found["market"]]
     found = get_or_none(f"/events/{ticker}")
     if found and found.get("markets"):
-        return found["markets"]
+        return ticker, found["markets"]
+    return ticker, None
+
+
+def resolve_markets(target):
+    """Markets named by a ticker or kalshi.com link, which may point at a whole event."""
+    ticker, markets = find_markets(target)
+    if markets:
+        return markets
     print(
         f"Kalshi has no market or event called {ticker}. "
         "Copy the link of the market's page on kalshi.com and pass that."
@@ -44,14 +55,14 @@ def resolve_markets(target):
     raise SystemExit(1)
 
 
-def predict_market(model, meta, market):
+def analyze_market(model, meta, market):
+    """Prediction for one market as a dict; "problem" is set instead when there is none."""
     ticker = market["ticker"]
-    name = market.get("yes_sub_title") or market.get("title", "")
-    print(f"\n{ticker}: {name}")
+    result = {"ticker": ticker, "name": market.get("yes_sub_title") or market.get("title", "")}
     rows = fetch_trades(ticker, max_pages=1)
     if not rows:
-        print("  no trades yet, cannot predict")
-        return
+        result["problem"] = "no trades yet, cannot predict"
+        return result
     trades = pd.DataFrame(
         {
             "ticker": [r["ticker"] for r in rows],
@@ -65,8 +76,8 @@ def predict_market(model, meta, market):
     )
     events = dataset.to_events(trades)
     if len(events) < meta["window"]:
-        print(f"  only {len(events)} trades so far, need {meta['window']} to predict")
-        return
+        result["problem"] = f"only {len(events)} trades so far, need {meta['window']} to predict"
+        return result
 
     close_time = pd.Timestamp(market["close_time"])
     _, price, feats = dataset.market_arrays(events, close_time)
@@ -74,12 +85,25 @@ def predict_market(model, meta, market):
     probs = model.predict(x, verbose=0)[0]
 
     last = events["created_time"].iloc[-1]
-    age_min = (pd.Timestamp.now(tz="UTC") - last).total_seconds() / 60
-    print(f"  last trade {last:%Y-%m-%d %H:%M:%S} UTC at yes price {price[-1]:.3f}")
+    result["last_trade"] = last
+    result["price"] = float(price[-1])
+    result["age_min"] = (pd.Timestamp.now(tz="UTC") - last).total_seconds() / 60
+    result["probs"] = {label: float(p) for label, p in zip(meta["classes"], probs)}
+    return result
+
+
+def predict_market(model, meta, market):
+    result = analyze_market(model, meta, market)
+    print(f"\n{result['ticker']}: {result['name']}")
+    if "problem" in result:
+        print(f"  {result['problem']}")
+        return
+    last, age_min = result["last_trade"], result["age_min"]
+    print(f"  last trade {last:%Y-%m-%d %H:%M:%S} UTC at yes price {result['price']:.3f}")
     if age_min > 5:
         print(f"  note: that was {age_min:.0f} minutes ago, so this market is quiet right now")
     print(f"  move of >= {meta['threshold']:.2f} within {meta['horizon_s']}s of that trade:")
-    for label, p in zip(meta["classes"], probs):
+    for label, p in result["probs"].items():
         print(f"    {label:5s} {p:.1%}")
 
 
