@@ -1,0 +1,4 @@
+tensorflow>=2.20
+pandas
+pyarrow
+requests

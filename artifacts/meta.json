@@ -1,0 +1,88 @@
+{
+  "window": 50,
+  "horizon_s": 60,
+  "threshold": 0.01,
+  "features": [
+    "yes_price",
+    "price_vs_latest",
+    "price_change",
+    "taker_side",
+    "log_size",
+    "signed_log_size",
+    "log_seconds_since_prev",
+    "log_seconds_to_close"
+  ],
+  "classes": [
+    "down",
+    "flat",
+    "up"
+  ],
+  "test_metrics": {
+    "class_prior": {
+      "log_loss": 1.0749692247219782,
+      "accuracy": 0.3819709162784131,
+      "macro_f1": 0.18426384703138035,
+      "confusion": [
+        [
+          0,
+          0,
+          10894
+        ],
+        [
+          0,
+          0,
+          6616
+        ],
+        [
+          0,
+          0,
+          10822
+        ]
+      ]
+    },
+    "linear_last_trade": {
+      "log_loss": 0.9972374439239502,
+      "accuracy": 0.5261541719610334,
+      "macro_f1": 0.507465946653943,
+      "confusion": [
+        [
+          6313,
+          781,
+          3800
+        ],
+        [
+          2369,
+          2225,
+          2022
+        ],
+        [
+          3557,
+          896,
+          6369
+        ]
+      ]
+    },
+    "model": {
+      "log_loss": 0.8530418872833252,
+      "accuracy": 0.5912042919666808,
+      "macro_f1": 0.5974760342709488,
+      "confusion": [
+        [
+          6186,
+          1474,
+          3234
+        ],
+        [
+          1281,
+          4477,
+          858
+        ],
+        [
+          3406,
+          1329,
+          6087
+        ]
+      ]
+    }
+  }
+}
