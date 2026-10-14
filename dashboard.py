@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,25 +19,35 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import requests
 from tensorflow import keras
 
+import tracker
 from predict import analyze_market, find_markets
 from train import ARTIFACTS
 
 PAGE = Path(__file__).parent / "dashboard.html"
 HOST = "127.0.0.1"
 PORTS = range(8765, 8775)
+MAX_CONTRACTS = 100_000
 
 meta = json.loads((ARTIFACTS / "meta.json").read_text())
 model = None
 model_lock = threading.Lock()  # one prediction at a time; Keras models are not thread-safe
 
 
-def predict(target):
-    """Response body and HTTP status for one lookup."""
+def predict(target, contracts):
+    """Response body and HTTP status for one lookup. Each prediction is also
+    paper traded with this many contracts (see tracker.py)."""
     target = target.strip()
     if not target:
         return {"error": "Paste a Kalshi market link or ticker first."}, 400
     try:
+        contracts = int(contracts)
+    except ValueError:
+        contracts = 0
+    if not 1 <= contracts <= MAX_CONTRACTS:
+        return {"error": f"Paper trade size must be a whole number from 1 to {MAX_CONTRACTS:,}."}, 400
+    try:
         ticker, markets = find_markets(target)
+        quoted_at = time.time()  # the bids and asks in markets are from now
         if not markets:
             return {
                 "error": f"Kalshi has no market or event called {ticker}. "
@@ -48,6 +59,7 @@ def predict(target):
                 result = analyze_market(model, meta, market)
             result["title"] = market.get("title", "")
             if "last_trade" in result:
+                result["paper_trade"] = tracker.record(meta, market, result, contracts, quoted_at)["trade"]
                 result["last_trade"] = result["last_trade"].isoformat()
             results.append(result)
     except requests.ConnectionError:
@@ -68,12 +80,16 @@ class Handler(BaseHTTPRequestHandler):
             info["baseline_accuracy"] = meta["test_metrics"]["class_prior"]["accuracy"]
             self.reply_json(info, 200)
         elif url.path == "/api/predict":
-            target = parse_qs(url.query).get("target", [""])[0]
+            query = parse_qs(url.query)
+            target = query.get("target", [""])[0]
+            contracts = query.get("contracts", ["10"])[0]
             try:
-                body, status = predict(target)
+                body, status = predict(target, contracts)
             except Exception as err:  # keep the server up and tell the page what broke
                 body, status = {"error": f"Prediction failed: {err}"}, 500
             self.reply_json(body, status)
+        elif url.path == "/api/history":
+            self.reply_json(tracker.report(), 200)
         else:
             self.reply_json({"error": "not found"}, 404)
 
@@ -116,6 +132,8 @@ def main():
 
     print("Loading model...")
     model = keras.models.load_model(ARTIFACTS / "model.keras")
+    # Checks each prediction once its horizon has passed and closes its paper trade.
+    threading.Thread(target=tracker.run_forever, daemon=True).start()
     url = f"http://{HOST}:{server.server_address[1]}"
     print(f"Dashboard running at {url}  (press Ctrl+C to stop)")
     if not args.no_browser:

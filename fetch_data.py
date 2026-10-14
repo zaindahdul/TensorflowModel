@@ -68,9 +68,12 @@ def discover_tickers(n_markets, per_series, days, slices, pages_per_slice):
     return chosen
 
 
-def fetch_trades(ticker, max_pages):
-    """Most recent trades for one market, newest first, up to max_pages pages."""
-    rows, params = [], {"limit": PAGE_SIZE, "ticker": ticker}
+def fetch_trades(ticker, max_pages, **filters):
+    """Most recent trades for one market, newest first, up to max_pages pages.
+
+    filters are passed to the API as-is, e.g. min_ts / max_ts in Unix seconds.
+    """
+    rows, params = [], {"limit": PAGE_SIZE, "ticker": ticker, **filters}
     for _ in range(max_pages):
         page = get("/markets/trades", params)
         rows.extend(page["trades"])

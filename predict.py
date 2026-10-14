@@ -55,15 +55,9 @@ def resolve_markets(target):
     raise SystemExit(1)
 
 
-def analyze_market(model, meta, market):
-    """Prediction for one market as a dict; "problem" is set instead when there is none."""
-    ticker = market["ticker"]
-    result = {"ticker": ticker, "name": market.get("yes_sub_title") or market.get("title", "")}
-    rows = fetch_trades(ticker, max_pages=1)
-    if not rows:
-        result["problem"] = "no trades yet, cannot predict"
-        return result
-    trades = pd.DataFrame(
+def trades_frame(rows):
+    """Trades as returned by the API -> the DataFrame layout dataset.py expects."""
+    return pd.DataFrame(
         {
             "ticker": [r["ticker"] for r in rows],
             "created_time": pd.to_datetime(
@@ -74,7 +68,17 @@ def analyze_market(model, meta, market):
             "taker_side": [r["taker_side"] for r in rows],
         }
     )
-    events = dataset.to_events(trades)
+
+
+def analyze_market(model, meta, market):
+    """Prediction for one market as a dict; "problem" is set instead when there is none."""
+    ticker = market["ticker"]
+    result = {"ticker": ticker, "name": market.get("yes_sub_title") or market.get("title", "")}
+    rows = fetch_trades(ticker, max_pages=1)
+    if not rows:
+        result["problem"] = "no trades yet, cannot predict"
+        return result
+    events = dataset.to_events(trades_frame(rows))
     if len(events) < meta["window"]:
         result["problem"] = f"only {len(events)} trades so far, need {meta['window']} to predict"
         return result

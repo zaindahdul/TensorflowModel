@@ -63,6 +63,25 @@
   .fill.up { background: var(--up); } .fill.down { background: var(--down); } .fill.flat { background: var(--flat); }
   .details { margin: 12px 0 0; font-size: 14px; color: var(--muted); }
   .note { margin-top: 10px; font-size: 14px; background: var(--warn-bg); color: var(--warn-text); border-radius: 8px; padding: 8px 12px; }
+  .size-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .size-row label { display: inline; margin: 0; font-weight: 400; }
+  .size-row input { flex: none; width: 96px; padding: 6px 8px; }
+  .paper { margin: 10px 0 0; font-size: 14px; }
+  .gain { color: var(--up); } .loss { color: var(--down); }
+  #track { margin-top: 36px; }
+  h2 { margin: 0 0 6px; font-size: 20px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .stat-label { font-size: 13px; color: var(--muted); }
+  .stat-value { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.3; }
+  .stat-sub { font-size: 13px; color: var(--muted); }
+  .hist { margin-top: 10px; padding: 12px 16px; }
+  .hist-head { display: flex; justify-content: space-between; gap: 12px; }
+  .hist-head .when { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .hist-line { font-size: 14px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .hist-line.muted { color: var(--muted); }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; }
+  .badge.right { background: var(--up); color: var(--card); }
+  .badge.wrong { background: var(--down); color: var(--card); }
   footer { margin-top: 28px; font-size: 13px; color: var(--muted); }
 </style>
 </head>
@@ -81,12 +100,24 @@
              placeholder="https://kalshi.com/markets/...  or  KXBTC15M-26OCT092030-30">
       <button type="button" id="paste">Paste</button>
     </div>
+    <div class="size-row">
+      <label for="contracts">Paper trade size</label>
+      <input id="contracts" type="number" min="1" max="100000" step="1" value="10" inputmode="numeric">
+      <span>contracts</span>
+    </div>
     <button type="submit" class="primary" id="go">Predict</button>
     <p class="hint">A link to an event with several markets predicts every market in it.</p>
   </form>
 
   <div id="status" aria-live="polite"></div>
   <div id="results"></div>
+
+  <section id="track" hidden>
+    <h2>Track record</h2>
+    <p class="hint" id="track-explain" style="margin: 0 0 12px"></p>
+    <div class="card stats" id="stats"></div>
+    <div id="history"></div>
+  </section>
 
   <footer id="footer">Estimates from a statistical model, not financial advice.</footer>
 </main>
@@ -97,6 +128,7 @@ const input = document.getElementById("target");
 const go = document.getElementById("go");
 const statusBox = document.getElementById("status");
 const resultsBox = document.getElementById("results");
+const contractsInput = document.getElementById("contracts");
 let info = { horizon_s: 60, threshold: 0.01 };
 
 function el(tag, className, text) {
@@ -120,6 +152,19 @@ function ageText(minutes) {
   if (minutes < 90) return Math.round(minutes) + " min ago";
   if (minutes < 48 * 60) return Math.round(minutes / 60) + " hours ago";
   return Math.round(minutes / 1440) + " days ago";
+}
+
+function money(dollars) {
+  const sign = dollars > 0 ? "+" : dollars < 0 ? "\u2212" : "";
+  return sign + "$" + Math.abs(dollars).toFixed(2);
+}
+
+function moneyClass(dollars) {
+  return dollars > 0 ? "gain" : dollars < 0 ? "loss" : "";
+}
+
+function contractsText(n, side) {
+  return n.toLocaleString() + " " + side.charAt(0).toUpperCase() + side.slice(1);
 }
 
 async function copyText(text) {
@@ -200,6 +245,14 @@ function resultCard(r) {
     card.append(el("div", "note",
       "This market is quiet right now, so the " + info.horizon_s + "-second window after its last trade has already passed."));
   }
+  const t = r.paper_trade;
+  if (t) {
+    card.append(el("p", "paper", t.skipped
+      ? "Paper trade: none, because " + t.skipped + "."
+      : "Paper trade: bought " + contractsText(t.contracts, t.side) + " at " + cents(t.entry_price) +
+        " each (fee " + cents(t.entry_fee) + "). It is sold in " + info.horizon_s +
+        " seconds; see the result under Track record."));
+  }
   return card;
 }
 
@@ -216,7 +269,8 @@ async function run(event) {
   go.textContent = "Predicting...";
   statusBox.replaceChildren();
   try {
-    const resp = await fetch("/api/predict?target=" + encodeURIComponent(target));
+    const resp = await fetch("/api/predict?target=" + encodeURIComponent(target) +
+      "&contracts=" + encodeURIComponent(contractsInput.value));
     const body = await resp.json();
     if (!resp.ok) throw new Error(body.error || "Something went wrong.");
     const cards = body.results.map(resultCard);
@@ -226,6 +280,7 @@ async function run(event) {
       resultsBox.append(all);
     }
     resultsBox.append(...cards);
+    refreshHistory();
   } catch (err) {
     const message = err instanceof TypeError
       ? "Could not reach the dashboard. Is dashboard.py still running?"
@@ -248,6 +303,74 @@ document.getElementById("paste").addEventListener("click", async () => {
 });
 form.addEventListener("submit", run);
 
+function stat(label, value, valueClass, sub) {
+  const box = el("div");
+  box.append(el("div", "stat-label", label), el("div", "stat-value " + (valueClass || ""), value), el("div", "stat-sub", sub));
+  return box;
+}
+
+function tradeLine(t) {
+  if (t.skipped) return el("div", "hist-line muted", "No trade: " + t.skipped + ".");
+  const bought = "Bought " + contractsText(t.contracts, t.side) + " at " + cents(t.entry_price);
+  if (t.problem) return el("div", "hist-line muted", bought + ". Not sold: " + t.problem + ".");
+  if (t.pnl === undefined) return el("div", "hist-line muted", bought + ", selling at the bid soon.");
+  const line = el("div", "hist-line");
+  line.append(bought + ", sold at " + cents(t.exit_price) + ", fees $" + (t.entry_fee + t.exit_fee).toFixed(2) + ": ",
+    el("strong", moneyClass(t.pnl), money(t.pnl)));
+  if (t.note) line.append(" (" + t.note + ")");
+  return line;
+}
+
+function historyCard(e) {
+  const card = el("div", "card hist");
+  const head = el("div", "hist-head");
+  const title = e.title && e.name && e.name !== e.title ? e.title + ": " + e.name : e.title || e.name || e.ticker;
+  head.append(el("div", "", title), el("div", "when", new Date(e.created * 1000).toLocaleString()));
+  card.append(head);
+
+  const call = el("div", "hist-line");
+  call.append("Predicted ", el("strong", e.predicted, e.predicted.toUpperCase()), " (" + percent(e.probs[e.predicted]) + ")");
+  if (e.outcome) {
+    call.append(", actual ", el("strong", e.outcome.actual, e.outcome.actual.toUpperCase()), " ",
+      el("span", "badge " + (e.outcome.correct ? "right" : "wrong"), e.outcome.correct ? "Correct" : "Wrong"));
+  } else if (e.error) {
+    call.append(". " + e.error);
+  } else {
+    const wait = Math.max(0, Math.ceil(e.due - Date.now() / 1000));
+    call.append(wait > 0 ? ". Checking in " + wait + "s" : ". Checking now");
+  }
+  card.append(call, tradeLine(e.trade));
+  return card;
+}
+
+let historyTimer = null;
+
+async function refreshHistory() {
+  clearTimeout(historyTimer);
+  let data;
+  try {
+    data = await (await fetch("/api/history")).json();
+  } catch (err) {
+    historyTimer = setTimeout(refreshHistory, 5000);
+    return;
+  }
+  const s = data.summary;
+  document.getElementById("track").hidden = s.predictions === 0;
+  document.getElementById("track-explain").textContent =
+    "Every prediction is paper traded, with no real money: Up buys Yes and Down buys No at the asking price when you click Predict, " +
+    "then sells at the bid " + info.horizon_s + " seconds later, after Kalshi taker fees. Flat predictions don't trade. " +
+    "This assumes your whole order fills at the best price. Correct means the price really moved the predicted way in the " +
+    info.horizon_s + " seconds after the last trade the model saw.";
+  document.getElementById("stats").replaceChildren(
+    stat("Accuracy", s.checked ? percent(s.correct / s.checked) : "\u2013", "",
+      s.correct + " of " + s.checked + " correct" + (s.pending ? ", " + s.pending + " pending" : "")),
+    stat("Paper profit", s.trades ? money(s.pnl) : "\u2013", moneyClass(s.pnl),
+      s.trades + " trade" + (s.trades === 1 ? "" : "s") + ", " + s.winning_trades + " won, $" +
+      s.fees.toFixed(2) + " in fees"));
+  document.getElementById("history").replaceChildren(...data.entries.slice(0, 50).map(historyCard));
+  if (s.pending) historyTimer = setTimeout(refreshHistory, 1000);
+}
+
 // A link like /?target=TICKER opens the page with that market already predicted.
 const preset = new URLSearchParams(location.search).get("target");
 if (preset) {
@@ -261,6 +384,7 @@ fetch("/api/info").then((r) => r.json()).then((data) => {
     "Paste a Kalshi market and a neural network reads its last " + data.window +
     " trades to estimate whether the Yes price will go up, go down, or stay flat over the next " +
     data.horizon_s + " seconds.";
+  refreshHistory();
   document.getElementById("footer").textContent =
     "On recent markets it never trained on, the model picked the right direction " +
     Math.round(data.accuracy * 100) + "% of the time, versus " + Math.round(data.baseline_accuracy * 100) +
