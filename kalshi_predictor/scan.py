@@ -1,8 +1,8 @@
 """Find the live markets the model is most confident about.
 
 Takes the markets trading the most on the exchange right now, predicts every
-one of them in a single batch, and ranks them by how sure the model is that
-the price moves (up or down) in the next minute.
+one of them in a single batch, and ranks them by how sure the model is of its
+call: calls that the price moves (up or down) first, then calls that it holds.
 
     python -m kalshi_predictor scan
     python -m kalshi_predictor scan --markets 40 --show 15
@@ -13,16 +13,21 @@ from . import kalshi
 from .predict import analyze_markets, load
 
 
-def confidence(result):
-    """The model's probability of its likelier direction; -1 if it has no prediction."""
-    probs = result.get("probs")
-    return max(probs["up"], probs["down"]) if probs else -1.0
-
-
 def signal(result):
-    """"up" or "down", whichever the model thinks is likelier, or None."""
+    """The model's call ("up", "down" or "flat"), or None without a prediction."""
     probs = result.get("probs")
-    return None if not probs else "up" if probs["up"] >= probs["down"] else "down"
+    return max(probs, key=probs.get) if probs else None
+
+
+def confidence(result):
+    """The model's probability of its call; -1 without a prediction."""
+    probs = result.get("probs")
+    return probs[signal(result)] if probs else -1.0
+
+
+def rank(row):
+    """Sort key: calls of a move first, most confident first."""
+    return (row["signal"] not in ("up", "down"), -row["confidence"])
 
 
 def scan(model, meta, markets=20, pages=4):
@@ -46,7 +51,7 @@ def scan(model, meta, markets=20, pages=4):
         )
         for m, result in zip(raw, results)
     ]
-    order = sorted(range(len(rows)), key=lambda i: -rows[i]["confidence"])
+    order = sorted(range(len(rows)), key=lambda i: rank(rows[i]))
     return [rows[i] for i in order], [raw[i] for i in order], span_s
 
 
@@ -60,7 +65,7 @@ def main():
     rows, _, span_s = scan(model, meta, args.markets)
     print(f"\nThe {len(rows)} busiest markets over the last {span_s:.0f}s of trading, most confident first.")
     print(f"Chance of a move of at least {meta['threshold']:.2f} within {meta['horizon_s']}s:\n")
-    print(f"{'signal':>8s} {'conf':>5s} {'flat':>5s} {'price':>6s} {'trades':>7s}  market")
+    print(f"{'call':>8s} {'conf':>5s} {'flat':>5s} {'price':>6s} {'trades':>7s}  market")
     for row in rows[: args.show]:
         result = row["prediction"]
         if "probs" not in result:

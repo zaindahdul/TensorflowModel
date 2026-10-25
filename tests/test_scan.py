@@ -1,12 +1,13 @@
 from kalshi_predictor import kalshi, scan
 
 
-def test_scan_ranks_by_directional_confidence(monkeypatch):
-    activity = {t: {"trades": n, "yes_taker_share": 0.5, "last_trade": "x"} for t, n in [("A-1", 9), ("B-1", 5), ("C-1", 2)]}
+def test_scan_ranks_calls_of_a_move_first(monkeypatch):
+    activity = {t: {"trades": n, "yes_taker_share": 0.5, "last_trade": "x"} for t, n in [("A-1", 9), ("B-1", 5), ("C-1", 2), ("D-1", 1)]}
     raw = [{"ticker": t, "event_ticker": t.split("-")[0], "title": t} for t in activity]
     probs = {
         "A-1": {"down": 0.2, "flat": 0.7, "up": 0.1},
         "B-1": {"down": 0.1, "flat": 0.1, "up": 0.8},
+        "D-1": {"down": 0.45, "flat": 0.15, "up": 0.4},
     }
     monkeypatch.setattr(kalshi, "tape_activity", lambda pages: (activity, 12.0))
     monkeypatch.setattr(kalshi, "get_markets", lambda tickers: [m for m in raw if m["ticker"] in tickers])
@@ -19,9 +20,10 @@ def test_scan_ranks_by_directional_confidence(monkeypatch):
             for m in markets
         ],
     )
-    rows, ordered_raw, span_s = scan.scan(model=None, meta={}, markets=3)
+    rows, ordered_raw, span_s = scan.scan(model=None, meta={}, markets=4)
     assert span_s == 12.0
-    assert [r["ticker"] for r in rows] == ["B-1", "A-1", "C-1"]
-    assert [m["ticker"] for m in ordered_raw] == ["B-1", "A-1", "C-1"]
-    assert [(r["signal"], r["confidence"]) for r in rows] == [("up", 0.8), ("down", 0.2), (None, -1.0)]
+    # B and D call a move; A's call is flat even though it is the most confident of the rest.
+    assert [r["ticker"] for r in rows] == ["B-1", "D-1", "A-1", "C-1"]
+    assert [m["ticker"] for m in ordered_raw] == ["B-1", "D-1", "A-1", "C-1"]
+    assert [(r["signal"], r["confidence"]) for r in rows] == [("up", 0.8), ("down", 0.45), ("flat", 0.7), (None, -1.0)]
     assert rows[0]["trades"] == 5

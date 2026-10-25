@@ -438,3 +438,26 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
 .verdict-badge svg { width: 11px; height: 11px; stroke-width: 3.5; }
 .verdict-badge.right { background: #0ca30c; color: #fff; }
 .verdict-badge.wrong { background: #d03b3b; color: #fff; }
+
+/* ---------- signals ---------- */
+
+.toolbar { display: flex; align-items: center; gap: 12px 20px; flex-wrap: wrap; margin-bottom: 16px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.toolbar-group { display: flex; align-items: center; gap: 8px; }
+.toolbar-label { font-size: 13px; color: var(--ink-2); }
+.toolbar-end { margin-left: auto; }
+.scan-summary { margin: 0 0 12px; color: var(--ink-2); }
+.table-card { padding: 4px 0; overflow-x: auto; transition: opacity .2s; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: 0; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.signals tbody tr { cursor: pointer; }
+table.signals tbody tr:hover, table.signals tbody tr:focus-visible { background: var(--surface-2); outline: none; }
+table.signals tr.strong .confidence span { font-weight: 700; }
+.confidence { display: flex; align-items: center; gap: 8px; min-width: 130px; }
+.meter { flex: 1; height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.meter .fill { height: 100%; border-radius: 0 4px 4px 0; }
+.market-cell { min-width: 240px; }
+.market-cell-title { font-weight: 600; line-height: 1.3; }
+.market-cell-sub { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 12px; }

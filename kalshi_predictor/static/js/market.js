@@ -12,6 +12,10 @@ export const sidebar = true;
 // Predictions made while opening a link, handed to the market page so it does
 // not predict (and paper trade) the same market twice.
 const handoff = new Map();
+
+export function handOff(result) {
+  handoff.set(result.ticker, result);
+}
 let teardown = null; // stops the open market page's requests and timers
 
 export function mount(root, params) {
