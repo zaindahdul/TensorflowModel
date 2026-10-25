@@ -5,15 +5,22 @@ import pandas as pd
 import requests
 
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
+# The search behind kalshi.com's search box. It is not part of the documented
+# trade API, so it may change without notice.
+SEARCH_URL = "https://api.elections.kalshi.com/v1/search/series"
 PAGE_SIZE = 1000
 
 session = requests.Session()
 
 
 def get(path, params=None, retries=6):
-    """GET with backoff on rate limits and transient server errors."""
+    """GET with backoff on rate limits and transient server errors.
+
+    path is relative to BASE_URL unless it is a full URL.
+    """
+    url = path if path.startswith("https://") else BASE_URL + path
     for attempt in range(retries):
-        resp = session.get(BASE_URL + path, params=params, timeout=30)
+        resp = session.get(url, params=params, timeout=30)
         if resp.status_code == 429 or resp.status_code >= 500:
             time.sleep(2**attempt)
             continue
@@ -105,3 +112,44 @@ def find_markets(target):
     if events:
         return events[0]["event_ticker"], events[0]["markets"]
     return ticker, None
+
+
+def dollars(value):
+    """A *_dollars string from the API as a float; None when missing."""
+    return None if value in (None, "") else float(value)
+
+
+def search(query, limit=20, category=None):
+    """Open events matching free text, busiest first, each with its open markets."""
+    params = {"query": query.strip(), "page_size": limit, "status": "open"}
+    if category:
+        params["category"] = category
+    events = []
+    for e in get(SEARCH_URL, params).get("current_page", []):
+        markets = [
+            {
+                "ticker": m["ticker"],
+                "name": m.get("yes_subtitle") or m.get("title", ""),
+                "yes_bid": dollars(m.get("yes_bid_dollars")),
+                "yes_ask": dollars(m.get("yes_ask_dollars")),
+                "last_price": dollars(m.get("last_price_dollars")),
+                "close_time": m.get("close_ts"),
+                "volume": m.get("volume", 0),
+            }
+            for m in e.get("markets", [])
+            if not is_combo(m["ticker"]) and not m.get("result")
+        ]
+        if not markets:
+            continue
+        events.append(
+            {
+                "event_ticker": e["event_ticker"],
+                "series_ticker": e.get("series_ticker", ""),
+                "title": e.get("event_title", ""),
+                "subtitle": e.get("event_subtitle", ""),
+                "category": e.get("category", ""),
+                "volume": e.get("recent_volume", 0),
+                "markets": sorted(markets, key=lambda m: -m["volume"]),
+            }
+        )
+    return events

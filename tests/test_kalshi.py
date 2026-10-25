@@ -49,3 +49,39 @@ def test_find_markets_picks_the_next_event_in_a_series(monkeypatch):
 def test_find_markets_none_when_nothing_matches(monkeypatch):
     monkeypatch.setattr(kalshi, "get_or_none", fake_api({}))
     assert kalshi.find_markets("NOPE") == ("NOPE", None)
+
+
+def test_search_normalizes_events_and_drops_settled_markets(monkeypatch):
+    body = {"current_page": [
+        {
+            "event_ticker": "KXNFLGAME-26OCT25GBDET", "series_ticker": "KXNFLGAME",
+            "event_title": "GB Packers vs DET Lions", "event_subtitle": "GB vs DET (Oct 25)",
+            "category": "Sports", "recent_volume": 19431733,
+            "markets": [
+                {"ticker": "KXNFLGAME-26OCT25GBDET-DET", "yes_subtitle": "DET Lions", "result": "",
+                 "yes_bid_dollars": "0.6100", "yes_ask_dollars": "0.6200", "last_price_dollars": "0.6100",
+                 "close_ts": "2026-10-27T20:25:00Z", "volume": 10},
+                {"ticker": "KXNFLGAME-26OCT25GBDET-GB", "yes_subtitle": "GB Packers", "result": "",
+                 "yes_bid_dollars": "0.3800", "yes_ask_dollars": "0.3900", "last_price_dollars": "",
+                 "close_ts": "2026-10-27T20:25:00Z", "volume": 99},
+                {"ticker": "KXNFLGAME-26OCT25GBDET-TIE", "yes_subtitle": "Tie", "result": "no", "volume": 1},
+            ],
+        },
+        {"event_ticker": "KXMVE-1", "markets": [{"ticker": "KXMVE-1-A", "result": ""}]},
+    ]}
+    seen = {}
+    def get(path, params=None):
+        seen.update(path=path, params=params)
+        return body
+    monkeypatch.setattr(kalshi, "get", get)
+
+    events = kalshi.search(" packers ", limit=5)
+    assert seen == {"path": kalshi.SEARCH_URL, "params": {"query": "packers", "page_size": 5, "status": "open"}}
+    assert len(events) == 1  # the combo event has nothing left
+    event = events[0]
+    assert (event["title"], event["category"], event["volume"]) == ("GB Packers vs DET Lions", "Sports", 19431733)
+    assert [m["ticker"] for m in event["markets"]] == ["KXNFLGAME-26OCT25GBDET-GB", "KXNFLGAME-26OCT25GBDET-DET"]
+    assert event["markets"][0] == {
+        "ticker": "KXNFLGAME-26OCT25GBDET-GB", "name": "GB Packers", "yes_bid": 0.38, "yes_ask": 0.39,
+        "last_price": None, "close_time": "2026-10-27T20:25:00Z", "volume": 99,
+    }
