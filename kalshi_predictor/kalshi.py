@@ -201,12 +201,12 @@ def categories(markets):
         return dict(zip(names, pool.map(category, names)))
 
 
-def live_markets(limit=24, pages=4):
-    """The markets with the most trades on the exchange right now, busiest first.
+def tape_activity(pages=4):
+    """How much each market traded in the last few pages of the exchange-wide
+    trade tape (a few thousand trades, usually the last 10-30 seconds).
 
-    Reads the last few pages of the exchange-wide trade tape (a few thousand
-    trades, usually the last 10-30 seconds) and counts trades per market.
-    Returns (markets, seconds of trading the sample covers).
+    Returns ({ticker: {trades, yes_taker_share, last_trade}} busiest first,
+    seconds of trading the sample covers).
     """
     rows, params = [], {"limit": PAGE_SIZE}
     for _ in range(pages):
@@ -216,32 +216,43 @@ def live_markets(limit=24, pages=4):
             break
         params["cursor"] = page["cursor"]
     if not rows:
-        return [], 0.0
+        return {}, 0.0
     times = pd.to_datetime([r["created_time"] for r in rows], format="ISO8601", utc=True)
-    span_s = (times.max() - times.min()).total_seconds()
-
     counts, yes_takers, last_seen = Counter(), Counter(), {}
     for r, ts in zip(rows, times):
         counts[r["ticker"]] += 1
         yes_takers[r["ticker"]] += r["taker_side"] == "yes"
         last_seen[r["ticker"]] = max(last_seen.get(r["ticker"], ts), ts)
-    top = [ticker for ticker, _ in counts.most_common(limit)]
-    found = get("/markets", {"tickers": ",".join(top), "limit": len(top)})["markets"]
+    activity = {
+        ticker: {
+            "trades": n,
+            "yes_taker_share": yes_takers[ticker] / n,
+            "last_trade": last_seen[ticker].isoformat(),
+        }
+        for ticker, n in counts.most_common()
+    }
+    return activity, (times.max() - times.min()).total_seconds()
+
+
+def get_markets(tickers):
+    """Market dicts for these tickers in the same order, skipping unknown ones."""
+    if not tickers:
+        return []
+    found = get("/markets", {"tickers": ",".join(tickers), "limit": len(tickers)})["markets"]
     by_ticker = {m["ticker"]: m for m in found}
-    cats = categories(found)
-    markets = []
-    for ticker in top:
-        if ticker not in by_ticker:
-            continue
-        m = by_ticker[ticker]
-        summary = market_summary(m, cats.get(series_of(m), ""))
-        summary.update(
-            trades=counts[ticker],
-            yes_taker_share=yes_takers[ticker] / counts[ticker],
-            last_trade=last_seen[ticker].isoformat(),
-        )
-        markets.append(summary)
-    return markets, span_s
+    return [by_ticker[t] for t in tickers if t in by_ticker]
+
+
+def live_markets(limit=24, pages=4):
+    """Summaries of the markets trading the most right now, busiest first,
+    and the seconds of trading that ranking is based on."""
+    activity, span_s = tape_activity(pages)
+    markets = get_markets(list(activity)[:limit])
+    cats = categories(markets)
+    summaries = [
+        dict(market_summary(m, cats.get(series_of(m), "")), **activity[m["ticker"]]) for m in markets
+    ]
+    return summaries, span_s
 
 
 def orderbook(ticker, depth=8):

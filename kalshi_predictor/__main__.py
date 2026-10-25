@@ -3,6 +3,7 @@
 Commands:
   dashboard   open the web dashboard (the default)
   predict     predict a market, event or series from the terminal
+  scan        find the live markets the model is most confident about
   fetch       download public trade history to train on
   train       train the model on the downloaded trades
 
@@ -17,6 +18,7 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 COMMANDS = {
     "dashboard": "dashboard",
     "predict": "predict",
+    "scan": "scan",
     "fetch": "fetch_data",
     "train": "train",
 }

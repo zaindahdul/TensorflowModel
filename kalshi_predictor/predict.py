@@ -9,6 +9,8 @@ a series ticker (predicts the open event that closes next), or a kalshi.com link
 """
 import argparse
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -17,6 +19,8 @@ from tensorflow import keras
 from . import dataset
 from .kalshi import fetch_trades, find_markets, trades_frame
 from .paths import ARTIFACTS
+
+model_lock = threading.Lock()  # Keras models are not safe to call from several threads
 
 
 def resolve_markets(target):
@@ -31,34 +35,64 @@ def resolve_markets(target):
     raise SystemExit(1)
 
 
-def analyze_market(model, meta, market):
-    """Prediction for one market as a dict; "problem" is set instead when there is none."""
+def prepare(meta, market):
+    """Fetch a market's latest trades and build the model's input from them.
+
+    Returns (result, x): result describes the market and its last trade, and
+    x is None, with result["problem"] saying why, when it cannot be predicted.
+    """
     ticker = market["ticker"]
     result = {"ticker": ticker, "name": market.get("yes_sub_title") or market.get("title", "")}
     rows = fetch_trades(ticker, max_pages=1)
     if not rows:
         result["problem"] = "no trades yet, cannot predict"
-        return result
+        return result, None
     events = dataset.to_events(trades_frame(rows))
     if len(events) < meta["window"]:
         result["problem"] = f"only {len(events)} trades so far, need {meta['window']} to predict"
-        return result
+        return result, None
 
     close_time = pd.Timestamp(market["close_time"])
     _, price, feats = dataset.market_arrays(events, close_time)
-    x = dataset.make_windows(feats, np.array([len(feats) - 1]))
-    probs = model.predict(x, verbose=0)[0]
-
     last = events["created_time"].iloc[-1]
     result["last_trade"] = last
     result["price"] = float(price[-1])
     result["age_min"] = (pd.Timestamp.now(tz="UTC") - last).total_seconds() / 60
-    result["probs"] = {label: float(p) for label, p in zip(meta["classes"], probs)}
-    return result
+    return result, dataset.make_windows(feats, np.array([len(feats) - 1]))
 
 
-def predict_market(model, meta, market):
-    result = analyze_market(model, meta, market)
+def run_model(model, meta, prepared):
+    """Fill in result["probs"] for every (result, x) pair from prepare that has
+    an input, in one model call. Returns the results."""
+    ready = [(result, x) for result, x in prepared if x is not None]
+    if ready:
+        with model_lock:
+            probs = model(np.concatenate([x for _, x in ready]), training=False).numpy()
+        for (result, _), p in zip(ready, probs):
+            result["probs"] = {label: float(v) for label, v in zip(meta["classes"], p)}
+    return [result for result, _ in prepared]
+
+
+def analyze_markets(model, meta, markets, workers=8):
+    """Predictions for several markets, as dicts in the same order. Their
+    trades are fetched in parallel and the model runs once for all of them;
+    "problem" is set instead of "probs" for a market that cannot be predicted."""
+    with ThreadPoolExecutor(workers) as pool:
+        prepared = list(pool.map(lambda market: prepare(meta, market), markets))
+    return run_model(model, meta, prepared)
+
+
+def analyze_market(model, meta, market):
+    return analyze_markets(model, meta, [market])[0]
+
+
+def load():
+    """The trained model's metadata and the model itself."""
+    meta = json.loads((ARTIFACTS / "meta.json").read_text())
+    return meta, keras.models.load_model(ARTIFACTS / "model.keras")
+
+
+def print_result(meta, result):
     print(f"\n{result['ticker']}: {result['name']}")
     if "problem" in result:
         print(f"  {result['problem']}")
@@ -78,10 +112,9 @@ def main():
     args = ap.parse_args()
 
     markets = resolve_markets(args.target)
-    meta = json.loads((ARTIFACTS / "meta.json").read_text())
-    model = keras.models.load_model(ARTIFACTS / "model.keras")
-    for market in markets:
-        predict_market(model, meta, market)
+    meta, model = load()
+    for result in analyze_markets(model, meta, markets):
+        print_result(meta, result)
 
 
 if __name__ == "__main__":
