@@ -1,7 +1,7 @@
 // App shell: theme, the search box, and a hash router that mounts one view at a time.
 import * as api from "./api.js";
-import { icon, store } from "./util.js";
-import { go, state } from "./state.js";
+import { icon, store, toast } from "./util.js";
+import { go, openTarget, state } from "./state.js";
 import * as market from "./market.js";
 import * as record from "./record.js";
 import * as search from "./search.js";
@@ -56,6 +56,18 @@ function setupTheme() {
   paint();
 }
 
+// Pasting a kalshi.com link or a ticker anywhere outside a text box opens it.
+function setupPaste() {
+  document.addEventListener("paste", (event) => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+    const text = (event.clipboardData?.getData("text") || "").trim();
+    if (!/kalshi\.com\/|^KX[A-Z0-9.-]+$/i.test(text)) return;
+    event.preventDefault();
+    toast("Opening " + text.split(/[?#]/)[0].replace(/\/+$/, "").split("/").pop().toUpperCase());
+    openTarget(text);
+  });
+}
+
 function setupShortcuts() {
   document.addEventListener("keydown", (event) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
@@ -70,6 +82,7 @@ async function start() {
   setupTheme();
   search.setup(document.getElementById("omni"));
   setupShortcuts();
+  setupPaste();
   // A link like /?target=TICKER (the bookmarklet uses this) opens that market.
   const preset = new URLSearchParams(location.search).get("target");
   if (preset) {

@@ -46,7 +46,25 @@ function welcome(page) {
         " trades and estimates whether its Yes price goes up, down or stays flat over the next " +
         state.info.horizon_s + " seconds."))),
     steps,
+    bookmarkletCard(),
   );
+}
+
+// A bookmark that sends the kalshi.com page you are on to this dashboard.
+function bookmarkletCard() {
+  const code = "javascript:(()=>{window.open(" + JSON.stringify(location.origin + "/?target=") +
+    "+encodeURIComponent(location.href),'_blank')})()";
+  const link = el("a", "bookmarklet", icon("bolt"), "Predict on dashboard");
+  link.href = code;
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    toast("Drag it to your bookmarks bar instead of clicking it here");
+  });
+  return el("section", "card bookmarklet-card",
+    el("div", "", el("h2", "", "One click from kalshi.com"),
+      el("p", "lead", "Drag this button to your bookmarks bar. Then, on any market page on kalshi.com, " +
+        "click the bookmark to open that market here with a fresh prediction. No copying tickers.")),
+    link);
 }
 
 async function openTarget(page, target) {
