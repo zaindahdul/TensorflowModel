@@ -402,3 +402,26 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
 @media (max-width: 700px) {
   .quotes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------- order book, event markets, rules ---------- */
+
+.two-up { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+.book-row { display: grid; grid-template-columns: 48px 56px 1fr; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
+.book-track { height: 14px; }
+.book-bar { height: 100%; border-radius: 0 4px 4px 0; min-width: 2px; }
+.book-bar.yes { background: var(--up); }
+.book-bar.no { background: var(--down); }
+.book-spread { margin: 6px 0; padding: 4px 0; border-top: 1px solid var(--grid); border-bottom: 1px solid var(--grid); text-align: center; font-size: 12px; color: var(--muted); }
+.book-key { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); margin: 4px 0; }
+.book-key .key { width: 12px; height: 8px; border-radius: 2px; }
+.book-key .key.yes { background: var(--up); }
+.book-key .key.no { background: var(--down); }
+
+.siblings { display: grid; gap: 2px; max-height: 330px; overflow-y: auto; }
+.sibling { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: var(--radius-sm); text-decoration: none; }
+.sibling:hover { background: var(--surface-2); }
+.sibling.active { background: var(--surface-2); font-weight: 650; }
+.sibling-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rules summary { cursor: pointer; font-weight: 650; }
+.rules p { margin: 10px 0 0; color: var(--ink-2); }

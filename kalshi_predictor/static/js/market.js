@@ -121,7 +121,10 @@ function marketPage(page, ticker) {
   const chartCard = el("section", "card",
     el("div", "card-head", el("div", "", el("h2", "", "Yes price"), el("div", "card-sub", "Last traded price")), ranges),
     chartBox);
-  main.append(quotes, chartCard);
+  const bookBox = el("div", "");
+  const siblingsBox = el("div", "");
+  const rulesBox = el("div", "");
+  main.append(quotes, chartCard, el("div", "grid two-up", bookBox, siblingsBox), rulesBox);
   const panel = el("div", "card prediction");
   side.append(panel);
 
@@ -154,6 +157,9 @@ function marketPage(page, ticker) {
       detail = next;
       renderHead(head, detail.market);
       renderQuotes(quotes, detail.market);
+      renderBook(bookBox, detail.orderbook);
+      renderSiblings(siblingsBox, detail.event, ticker);
+      renderRules(rulesBox, detail.market);
       const points = detail.history.filter((c) => c.price !== null).map((c) => ({ ...c, v: c.price }));
       if (!chart) {
         chart = lineChart(chartBox, points, {
@@ -230,6 +236,60 @@ function renderHead(head, m) {
 function renderCountdown(head, m) {
   const box = head.querySelector(".countdown");
   if (box && m.close_time) box.textContent = "\u00b7 " + untilText(m.close_time);
+}
+
+const BOOK_LEVELS = 6;
+
+// One ladder: offers to sell Yes on top (each is a No bid at 1 - price), bids
+// for Yes underneath, with bars sized by how many contracts rest there.
+function renderBook(box, book) {
+  const asks = book.no.slice(0, BOOK_LEVELS).map(([p, q]) => [1 - p, q]).reverse();
+  const bids = book.yes.slice(0, BOOK_LEVELS);
+  const most = Math.max(1, ...asks.map(([, q]) => q), ...bids.map(([, q]) => q));
+  const row = ([price, size], side) => {
+    const bar = el("div", "book-bar " + side);
+    bar.style.width = ((size / most) * 100).toFixed(1) + "%";
+    return el("div", "book-row", el("span", "num", cents(price)), el("span", "num muted", compact(size)), el("div", "book-track", bar));
+  };
+  const spread = asks.length && bids.length ? asks[asks.length - 1][0] - bids[0][0] : null;
+  const card = el("section", "card book",
+    el("div", "card-head", el("div", "", el("h2", "", "Order book"), el("div", "card-sub", "Yes price \u00b7 contracts resting"))),
+    el("div", "book-key", el("span", "key no"), "Offers to sell Yes (No bids)"),
+    ...asks.map((level) => row(level, "no")),
+    el("div", "book-spread", spread !== null ? "spread " + cents(spread) : "no spread"),
+    ...bids.map((level) => row(level, "yes")),
+    el("div", "book-key", el("span", "key yes"), "Bids to buy Yes"),
+  );
+  if (!asks.length && !bids.length) card.append(el("p", "muted", "Nobody has an order resting in this market."));
+  box.replaceChildren(card);
+}
+
+function renderSiblings(box, event, current) {
+  if (!event || event.markets.length < 2) {
+    box.replaceChildren();
+    return;
+  }
+  const list = el("div", "siblings");
+  for (const m of event.markets) {
+    const item = el("a", "sibling" + (m.ticker === current ? " active" : ""),
+      el("span", "sibling-name", m.name || m.title), el("span", "num", cents(m.last_price ?? m.yes_bid)));
+    item.href = "#/market/" + encodeURIComponent(m.ticker);
+    list.append(item);
+  }
+  box.replaceChildren(el("section", "card",
+    el("div", "card-head", el("div", "", el("h2", "", "In this event"), el("div", "card-sub", event.title))),
+    list));
+}
+
+function renderRules(box, m) {
+  if (!m.rules) {
+    box.replaceChildren();
+    return;
+  }
+  const open = box.querySelector("details")?.open ?? false;
+  const details = el("details", "card rules", el("summary", "", "How this market resolves"), el("p", "", m.rules));
+  details.open = open;
+  box.replaceChildren(details);
 }
 
 function renderQuotes(box, m) {
