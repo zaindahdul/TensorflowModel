@@ -1,9 +1,10 @@
 """Predict the short-term price direction of a live Kalshi market.
 
 Accepts a market ticker, an event ticker (predicts every market in the event),
-or a kalshi.com link / the end of one:
+a series ticker (predicts the open event that closes next), or a kalshi.com link:
 
     python -m kalshi_predictor.predict KXBTC15M-26OCT092030-30
+    python -m kalshi_predictor.predict KXBTC15M
     python -m kalshi_predictor.predict https://kalshi.com/markets/kxncaafgame/college-football-game/kxncaafgame-26oct10vtcal
 """
 import argparse
@@ -14,32 +15,17 @@ import pandas as pd
 from tensorflow import keras
 
 from . import dataset
-from .kalshi import fetch_trades, get_or_none, trades_frame
+from .kalshi import fetch_trades, find_markets, trades_frame
 from .paths import ARTIFACTS
 
 
-def find_markets(target):
-    """Ticker named by a ticker or kalshi.com link, and its markets (None if Kalshi has none).
-
-    The ticker may point at a whole event, in which case every market in it is returned.
-    """
-    ticker = target.split("?")[0].rstrip("/").split("/")[-1].upper()
-    found = get_or_none(f"/markets/{ticker}")
-    if found:
-        return ticker, [found["market"]]
-    found = get_or_none(f"/events/{ticker}")
-    if found and found.get("markets"):
-        return ticker, found["markets"]
-    return ticker, None
-
-
 def resolve_markets(target):
-    """Markets named by a ticker or kalshi.com link, which may point at a whole event."""
+    """Markets named by a ticker or kalshi.com link; exits if there are none."""
     ticker, markets = find_markets(target)
     if markets:
         return markets
     print(
-        f"Kalshi has no market or event called {ticker}. "
+        f"Kalshi has no market, event or series called {ticker}. "
         "Copy the link of the market's page on kalshi.com and pass that."
     )
     raise SystemExit(1)
@@ -88,7 +74,7 @@ def predict_market(model, meta, market):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("target", help="market ticker, event ticker, or kalshi.com link")
+    ap.add_argument("target", help="market, event or series ticker, or a kalshi.com link")
     args = ap.parse_args()
 
     markets = resolve_markets(args.target)

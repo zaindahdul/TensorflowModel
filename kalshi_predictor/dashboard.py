@@ -21,7 +21,8 @@ from tensorflow import keras
 
 from . import tracker
 from .paths import ARTIFACTS
-from .predict import analyze_market, find_markets
+from .kalshi import find_markets
+from .predict import analyze_market
 
 PAGE = Path(__file__).parent / "dashboard.html"
 HOST = "127.0.0.1"
@@ -50,7 +51,7 @@ def predict(target, contracts):
         quoted_at = time.time()  # the bids and asks in markets are from now
         if not markets:
             return {
-                "error": f"Kalshi has no market or event called {ticker}. "
+                "error": f"Kalshi has no market, event or series called {ticker}. "
                 "Copy the link of the market's page on kalshi.com and paste that."
             }, 404
         results = []
