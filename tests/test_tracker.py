@@ -132,12 +132,16 @@ def test_report_filters_entries_and_totals():
 
 def test_report_totals():
     tracker.history.extend([
-        {"status": "done", "outcome": {"correct": True}, "trade": {"pnl": 1.5, "entry_fee": 0.1, "exit_fee": 0.1}},
-        {"status": "done", "outcome": {"correct": False}, "trade": {"pnl": -0.5, "entry_fee": 0.1, "exit_fee": 0.0}},
-        {"status": "pending", "trade": {}},
+        {"ticker": "A", "created": 1, "status": "done", "predicted": "up", "outcome": {"correct": True},
+         "trade": {"pnl": 1.5, "entry_fee": 0.1, "exit_fee": 0.1}},
+        {"ticker": "A", "created": 2, "status": "done", "predicted": "down", "outcome": {"correct": False},
+         "trade": {"pnl": -0.5, "entry_fee": 0.1, "exit_fee": 0.0}},
+        {"ticker": "A", "created": 3, "status": "done", "predicted": "flat", "outcome": {"correct": True}, "trade": {}},
+        {"ticker": "A", "created": 4, "status": "pending", "predicted": "up", "trade": {}},
     ])
     s = tracker.report()["summary"]
-    assert (s["predictions"], s["pending"], s["checked"], s["correct"]) == (3, 1, 2, 1)
+    assert (s["predictions"], s["pending"], s["checked"], s["correct"]) == (4, 1, 3, 2)
+    assert (s["move_calls"], s["move_correct"]) == (2, 1)
     assert (s["trades"], s["winning_trades"], s["pnl"], s["fees"]) == (2, 1, 1.0, 0.3)
 
 

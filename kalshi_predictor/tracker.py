@@ -212,6 +212,7 @@ def report(ticker=None, source=None, since=None, limit=None):
             and (since is None or e["created"] >= since)
         ]
     checked = [e for e in entries if "outcome" in e]
+    move_calls = [e for e in checked if e["predicted"] in ("up", "down")]
     trades = [e["trade"] for e in entries if "pnl" in e["trade"]]
     return {
         "entries": entries[::-1][:limit],
@@ -220,6 +221,9 @@ def report(ticker=None, source=None, since=None, limit=None):
             "pending": sum(e["status"] == "pending" for e in entries),
             "checked": len(checked),
             "correct": sum(e["outcome"]["correct"] for e in checked),
+            # Calls of a move are the ones that open a trade, so they matter most.
+            "move_calls": len(move_calls),
+            "move_correct": sum(e["outcome"]["correct"] for e in move_calls),
             "trades": len(trades),
             "winning_trades": sum(t["pnl"] > 0 for t in trades),
             "pnl": round(sum(t["pnl"] for t in trades), 2),

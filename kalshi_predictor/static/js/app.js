@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { icon, store } from "./util.js";
 import { go, state } from "./state.js";
 import * as market from "./market.js";
+import * as record from "./record.js";
 import * as search from "./search.js";
 import * as signals from "./signals.js";
 import * as sidebar from "./sidebar.js";
@@ -12,6 +13,7 @@ const routes = [
   [/^\/market\/(.+)$/, market, (m) => ({ ticker: decodeURIComponent(m[1]) })],
   [/^\/open\/(.+)$/, market, (m) => ({ target: decodeURIComponent(m[1]) })],
   [/^\/signals$/, signals, () => ({})],
+  [/^\/record$/, record, () => ({})],
   [/^\/?$/, market, () => ({})],
 ];
 
