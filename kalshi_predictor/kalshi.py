@@ -299,3 +299,10 @@ def price_history(ticker, event_ticker, span="6h"):
             }
         )
     return candles
+
+
+def web_url(event_ticker, series_title):
+    """The kalshi.com page for an event."""
+    series = event_ticker.split("-")[0].lower()
+    slug = "-".join("".join(c if c.isalnum() else " " for c in series_title.lower()).split())
+    return f"https://kalshi.com/markets/{series}/{slug or series}/{event_ticker.lower()}"

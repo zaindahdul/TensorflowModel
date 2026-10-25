@@ -1,98 +1,232 @@
-"""Local web dashboard for predict.py: paste a Kalshi market, see the prediction.
+"""Local web dashboard: browse live Kalshi markets, see predictions, track them.
 
-    python -m kalshi_predictor.dashboard
+    python -m kalshi_predictor dashboard
 
 Opens http://127.0.0.1:8765 in your browser. Only this computer can reach it.
 """
 import argparse
 import json
-import os
 import threading
 import time
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
-
+import pandas as pd
 import requests
-from tensorflow import keras
 
-from . import tracker
-from .paths import ARTIFACTS
-from .kalshi import find_markets
-from .predict import analyze_market
+from . import kalshi, scan, tracker
+from .predict import analyze_markets, load
 
-PAGE = Path(__file__).parent / "dashboard.html"
+STATIC = Path(__file__).parent / "static"
 HOST = "127.0.0.1"
 PORTS = range(8765, 8775)
 MAX_CONTRACTS = 100_000
+MAX_EVENT_MARKETS = 16  # events like "BTC price at 7pm" have hundreds of markets
+LIVE_CACHE_S = 5
+# Spelled out because Windows can map .js to text/plain in the registry.
+CONTENT_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
+}
 
-meta = json.loads((ARTIFACTS / "meta.json").read_text())
-model = None
-model_lock = threading.Lock()  # one prediction at a time; Keras models are not thread-safe
+meta = model = None
+live_cache = {"at": 0.0, "body": None}
+live_lock = threading.Lock()
 
 
-def predict(target, contracts):
-    """Response body and HTTP status for one lookup. Each prediction is also
-    paper traded with this many contracts (see tracker.py)."""
-    target = target.strip()
-    if not target:
-        return {"error": "Paste a Kalshi market link or ticker first."}, 400
+class BadRequest(Exception):
+    """A problem with what was asked for, shown to the user as is."""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def jsonable(result):
+    """A prediction from analyze_markets with its timestamps as ISO strings."""
+    return {k: v.isoformat() if isinstance(v, pd.Timestamp) else v for k, v in result.items()}
+
+
+def parse_contracts(value):
     try:
-        contracts = int(contracts)
-    except ValueError:
+        contracts = int(value)
+    except (TypeError, ValueError):
         contracts = 0
     if not 1 <= contracts <= MAX_CONTRACTS:
-        return {"error": f"Paper trade size must be a whole number from 1 to {MAX_CONTRACTS:,}."}, 400
+        raise BadRequest(f"Paper trade size must be a whole number from 1 to {MAX_CONTRACTS:,}.")
+    return contracts
+
+
+def tradeable_first(markets):
+    """Open markets before settled ones, busiest first."""
+    return sorted(markets, key=lambda m: (bool(m.get("result")), -float(m.get("volume_24h_fp") or 0)))
+
+
+def predict(target, contracts, source="manual"):
+    """Predict a market, event or series named by a ticker or link, and paper
+    trade each prediction with this many contracts (see tracker.py)."""
+    target = (target or "").strip()
+    if not target:
+        raise BadRequest("Search for a market, or paste a Kalshi link or ticker.")
+    contracts = parse_contracts(contracts)
+    ticker, markets = kalshi.find_markets(target)
+    quoted_at = time.time()  # the bids and asks in markets are from now
+    if not markets:
+        raise BadRequest(
+            f"Kalshi has no market, event or series called {ticker}. Try searching by name instead.", 404
+        )
+    note = None
+    if len(markets) > MAX_EVENT_MARKETS:
+        note = f"Showing the {MAX_EVENT_MARKETS} most traded of {len(markets)} markets in this event."
+    markets = tradeable_first(markets)[:MAX_EVENT_MARKETS]
+    cats = kalshi.categories(markets)
+    results = []
+    for market, result in zip(markets, analyze_markets(model, meta, markets)):
+        result["title"] = market.get("title", "")
+        result["market"] = kalshi.market_summary(market, cats.get(kalshi.series_of(market), ""))
+        if "probs" in result:
+            entry = tracker.record(meta, market, result, contracts, quoted_at, source=source)
+            result["paper_trade"] = entry["trade"]
+        results.append(jsonable(result))
+    return {"ticker": ticker, "results": results, "note": note}
+
+
+def run_scan(markets, contracts, record):
+    """The busiest live markets ranked by model confidence, optionally paper traded."""
     try:
-        ticker, markets = find_markets(target)
-        quoted_at = time.time()  # the bids and asks in markets are from now
-        if not markets:
-            return {
-                "error": f"Kalshi has no market, event or series called {ticker}. "
-                "Copy the link of the market's page on kalshi.com and paste that."
-            }, 404
-        results = []
-        for market in markets:
-            with model_lock:
-                result = analyze_market(model, meta, market)
+        markets = max(1, min(int(markets), 40))
+    except (TypeError, ValueError):
+        markets = 20
+    contracts = parse_contracts(contracts) if record else None
+    rows, raw, span_s = scan.scan(model, meta, markets)
+    quoted_at = time.time()
+    for row, market in zip(rows, raw):
+        result = row["prediction"]
+        if record and "probs" in result:
             result["title"] = market.get("title", "")
-            if "last_trade" in result:
-                result["paper_trade"] = tracker.record(meta, market, result, contracts, quoted_at)["trade"]
-                result["last_trade"] = result["last_trade"].isoformat()
-            results.append(result)
-    except requests.ConnectionError:
-        return {"error": "Could not reach Kalshi. Check your internet connection."}, 502
-    except (requests.RequestException, RuntimeError) as err:
-        return {"error": f"Kalshi request failed: {err}"}, 502
-    return {"results": results}, 200
+            row["paper_trade"] = tracker.record(meta, market, result, contracts, quoted_at, source="scan")["trade"]
+        row["prediction"] = jsonable(result)
+    return {"rows": rows, "span_s": span_s, "scanned_at": quoted_at}
+
+
+def live(limit):
+    """Busiest markets right now. Cached briefly so several open tabs share one lookup."""
+    with live_lock:
+        if live_cache["body"] is None or time.time() - live_cache["at"] > LIVE_CACHE_S:
+            markets, span_s = kalshi.live_markets(limit=40)
+            live_cache.update(at=time.time(), body={"markets": markets, "span_s": span_s})
+        body = live_cache["body"]
+    return dict(body, markets=body["markets"][:limit])
+
+
+def market_detail(ticker, span):
+    """Everything the market view shows: quotes, order book, price history and the
+    other markets in its event."""
+    if span not in kalshi.HISTORY_RANGES:
+        raise BadRequest(f"span must be one of {', '.join(kalshi.HISTORY_RANGES)}")
+    found = kalshi.get_or_none(f"/markets/{kalshi.parse_ticker(ticker)}")
+    if not found:
+        raise BadRequest(f"Kalshi has no market called {ticker}.", 404)
+    m = found["market"]
+    with ThreadPoolExecutor(4) as pool:
+        book = pool.submit(kalshi.orderbook, m["ticker"])
+        history = pool.submit(kalshi.price_history, m["ticker"], m["event_ticker"], span)
+        event = pool.submit(kalshi.get_or_none, f"/events/{m['event_ticker']}")
+        series = pool.submit(kalshi.series_info, kalshi.series_of(m))
+    series = series.result()
+    category = series.get("category", "")
+    siblings = tradeable_first((event.result() or {}).get("markets", []))[:MAX_EVENT_MARKETS]
+    return {
+        "market": dict(
+            kalshi.market_summary(m, category),
+            rules=m.get("rules_primary", ""),
+            url=kalshi.web_url(m["event_ticker"], series.get("title", "")),
+        ),
+        "event": {
+            "title": ((event.result() or {}).get("event") or {}).get("title", ""),
+            "markets": [kalshi.market_summary(s, category) for s in siblings],
+        },
+        "orderbook": book.result(),
+        "history": history.result(),
+        "span": span,
+    }
+
+
+def model_info():
+    metrics = meta["test_metrics"]
+    info = {k: meta[k] for k in ("window", "horizon_s", "threshold", "classes")}
+    info.update(
+        accuracy=metrics["model"]["accuracy"],
+        baseline_accuracy=metrics["class_prior"]["accuracy"],
+        linear_accuracy=metrics["linear_last_trade"]["accuracy"],
+        confusion=metrics["model"]["confusion"],
+        history_spans=list(kalshi.HISTORY_RANGES),
+    )
+    return info
 
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
-        if url.path == "/":
-            self.reply(200, "text/html; charset=utf-8", PAGE.read_bytes())
-        elif url.path == "/api/info":
-            info = {k: meta[k] for k in ("window", "horizon_s", "threshold", "classes")}
-            info["accuracy"] = meta["test_metrics"]["model"]["accuracy"]
-            info["baseline_accuracy"] = meta["test_metrics"]["class_prior"]["accuracy"]
-            self.reply_json(info, 200)
-        elif url.path == "/api/predict":
-            query = parse_qs(url.query)
-            target = query.get("target", [""])[0]
-            contracts = query.get("contracts", ["10"])[0]
-            try:
-                body, status = predict(target, contracts)
-            except Exception as err:  # keep the server up and tell the page what broke
-                body, status = {"error": f"Prediction failed: {err}"}, 500
-            self.reply_json(body, status)
-        elif url.path == "/api/history":
-            self.reply_json(tracker.report(), 200)
+        query = {k: v[0] for k, v in parse_qs(url.query).items()}
+        routes = {
+            "/api/info": model_info,
+            "/api/history": tracker.report,
+            "/api/live": lambda: live(int(query.get("limit", 24))),
+            "/api/search": lambda: {"events": kalshi.search(query.get("q", ""), 20, query.get("category"))},
+            "/api/market": lambda: market_detail(query.get("ticker", ""), query.get("span", "6h")),
+        }
+        if url.path in routes:
+            self.answer(routes[url.path])
+        elif url.path == "/" or url.path.startswith("/static/"):
+            self.static(url.path)
         else:
             self.reply_json({"error": "not found"}, 404)
+
+    def do_POST(self):
+        url = urlparse(self.path)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return self.reply_json({"error": "The request body must be JSON."}, 400)
+        routes = {
+            "/api/predict": lambda: predict(body.get("target"), body.get("contracts", 10)),
+            "/api/scan": lambda: run_scan(
+                body.get("markets", 20), body.get("contracts", 10), bool(body.get("record", True))
+            ),
+        }
+        if url.path in routes:
+            self.answer(routes[url.path])
+        else:
+            self.reply_json({"error": "not found"}, 404)
+
+    def answer(self, handler):
+        """Run an API handler and reply with its result, or with what went wrong."""
+        try:
+            body, status = handler(), 200
+        except BadRequest as err:
+            body, status = {"error": str(err)}, err.status
+        except requests.ConnectionError:
+            body, status = {"error": "Could not reach Kalshi. Check your internet connection."}, 502
+        except (requests.RequestException, RuntimeError) as err:
+            body, status = {"error": f"Kalshi request failed: {err}"}, 502
+        except Exception as err:  # keep the server up and tell the page what broke
+            body, status = {"error": f"Something went wrong: {err}"}, 500
+        self.reply_json(body, status)
+
+    def static(self, path):
+        name = "index.html" if path == "/" else path.removeprefix("/static/")
+        file = (STATIC / name).resolve()
+        if not file.is_relative_to(STATIC.resolve()) or not file.is_file():
+            return self.reply_json({"error": "not found"}, 404)
+        content_type = CONTENT_TYPES.get(file.suffix, "application/octet-stream")
+        self.reply(200, content_type, file.read_bytes())
 
     def reply_json(self, body, status):
         self.reply(status, "application/json", json.dumps(body).encode())
@@ -116,7 +250,7 @@ class Server(ThreadingHTTPServer):
 
 
 def main():
-    global model
+    global meta, model
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--no-browser", action="store_true", help="do not open the browser")
     args = ap.parse_args()
@@ -132,7 +266,7 @@ def main():
         raise SystemExit(f"Ports {PORTS.start}-{PORTS.stop - 1} are all in use.")
 
     print("Loading model...")
-    model = keras.models.load_model(ARTIFACTS / "model.keras")
+    meta, model = load()
     # Checks each prediction once its horizon has passed and closes its paper trade.
     threading.Thread(target=tracker.run_forever, daemon=True).start()
     url = f"http://{HOST}:{server.server_address[1]}"

@@ -139,3 +139,12 @@ def test_price_history_carries_the_last_price_forward(monkeypatch):
     assert [c["price"] for c in candles] == [0.40, 0.40, 0.40]
     assert candles[1] == {"t": 120, "price": 0.40, "yes_bid": 0.38, "yes_ask": 0.41, "volume": 0.0}
     assert candles[2]["yes_bid"] is None
+
+
+def test_web_url_matches_kalshi_links():
+    assert kalshi.web_url("KXNCAAFGAME-26OCT10VTCAL", "College Football Game") == (
+        "https://kalshi.com/markets/kxncaafgame/college-football-game/kxncaafgame-26oct10vtcal"
+    )
+    assert kalshi.web_url("KXBTCD-26OCT2519", "Bitcoin price Above/below") == (
+        "https://kalshi.com/markets/kxbtcd/bitcoin-price-above-below/kxbtcd-26oct2519"
+    )

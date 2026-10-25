@@ -269,8 +269,11 @@ async function run(event) {
   go.textContent = "Predicting...";
   statusBox.replaceChildren();
   try {
-    const resp = await fetch("/api/predict?target=" + encodeURIComponent(target) +
-      "&contracts=" + encodeURIComponent(contractsInput.value));
+    const resp = await fetch("/api/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target, contracts: contractsInput.value }),
+    });
     const body = await resp.json();
     if (!resp.ok) throw new Error(body.error || "Something went wrong.");
     const cards = body.results.map(resultCard);

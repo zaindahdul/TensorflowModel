@@ -61,10 +61,11 @@ def quote(market, side, which):
     return float(market.get(f"{side}_{which}_dollars") or 0)
 
 
-def record(meta, market, result, contracts, quoted_at):
+def record(meta, market, result, contracts, quoted_at, source="manual"):
     """Log one prediction from analyze_market and open its paper trade.
 
-    market is the market dict (with its bid and ask) fetched at quoted_at.
+    market is the market dict (with its bid and ask) fetched at quoted_at, and
+    source says what asked for the prediction ("manual" or "scan").
     Returns the stored entry.
     """
     predicted = max(result["probs"], key=result["probs"].get)
@@ -88,6 +89,7 @@ def record(meta, market, result, contracts, quoted_at):
         "created": quoted_at,
         "due": quoted_at + meta["horizon_s"],
         "status": "pending",
+        "source": source,
         "ticker": result["ticker"],
         "title": market.get("title", ""),
         "name": result["name"],
