@@ -8,7 +8,7 @@ function niceStep(span, target) {
   const raw = span / target;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const norm = raw / mag;
-  return (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10) * mag;
+  return (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
 }
 
 function ticks(lo, hi, target) {
@@ -26,6 +26,7 @@ function ticks(lo, hi, target) {
  *   formatTime   unix seconds -> text
  *   tooltipRows  point -> [[label, value text], ...] shown under the main value
  *   domain       [min, max] limits for the y axis, e.g. [0, 1] for prices
+ *   minSpan      the smallest range the y axis shows, so tiny wiggles stay small
  *   step         draw as a step line (a value holds until the next point)
  *   zero         emphasise y = 0 (for profit and loss)
  *   label        accessible name of the chart
@@ -67,9 +68,15 @@ export function lineChart(container, points, options) {
     const pad = (hi - lo) * 0.15 || Math.abs(hi) * 0.1 || 0.05;
     lo -= pad;
     hi += pad;
+    if (opts.minSpan && hi - lo < opts.minSpan) {
+      const mid = (hi + lo) / 2;
+      lo = mid - opts.minSpan / 2;
+      hi = mid + opts.minSpan / 2;
+    }
     if (opts.domain) {
-      lo = Math.max(opts.domain[0], lo);
-      hi = Math.min(opts.domain[1], hi);
+      // Clamp to the domain, sliding the window instead of shrinking it.
+      if (lo < opts.domain[0]) [lo, hi] = [opts.domain[0], Math.min(opts.domain[1], hi + opts.domain[0] - lo)];
+      if (hi > opts.domain[1]) [lo, hi] = [Math.max(opts.domain[0], lo - (hi - opts.domain[1])), opts.domain[1]];
     }
     const t0 = data[0].t;
     const t1 = Math.max(data[data.length - 1].t, t0 + 1);

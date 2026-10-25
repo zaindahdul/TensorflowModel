@@ -195,7 +195,7 @@ function marketPage(page, ticker) {
       if (!chart) {
         chart = lineChart(chartBox, points, {
           label: "Yes price over the last " + span,
-          height: 240, step: true, domain: [0, 1],
+          height: 240, step: true, domain: [0, 1], minSpan: 0.1,
           formatValue: (v, precise) => cents(v, precise ? 1 : 0),
           formatTime: timeLabel,
           emptyText: "No trades in this range",

@@ -73,7 +73,7 @@ export function mount(root) {
       const points = equityPoints(data.equity);
       if (!equity) {
         equity = lineChart(equityBox, points, {
-          label: "Paper profit over time", height: 200, step: true, zero: true,
+          label: "Paper profit over time", height: 200, step: true, zero: true, minSpan: 1,
           formatValue: (v) => money(v), formatTime: timeLabel,
           emptyText: "No closed paper trades yet",
           tooltipRows: (p) => (p.name ? [["Trade", p.name], ["This trade", money(p.pnl)]] : []),
