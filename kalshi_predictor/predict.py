@@ -11,21 +11,11 @@ import json
 
 import numpy as np
 import pandas as pd
-import requests
 from tensorflow import keras
 
 from . import dataset
-from .fetch_data import fetch_trades, get
+from .kalshi import fetch_trades, get_or_none, trades_frame
 from .paths import ARTIFACTS
-
-
-def get_or_none(path):
-    try:
-        return get(path)
-    except requests.HTTPError as err:
-        if err.response.status_code == 404:
-            return None
-        raise
 
 
 def find_markets(target):
@@ -53,21 +43,6 @@ def resolve_markets(target):
         "Copy the link of the market's page on kalshi.com and pass that."
     )
     raise SystemExit(1)
-
-
-def trades_frame(rows):
-    """Trades as returned by the API -> the DataFrame layout dataset.py expects."""
-    return pd.DataFrame(
-        {
-            "ticker": [r["ticker"] for r in rows],
-            "created_time": pd.to_datetime(
-                [r["created_time"] for r in rows], format="ISO8601", utc=True
-            ),
-            "yes_price": [float(r["yes_price_dollars"]) for r in rows],
-            "count": [float(r["count_fp"]) for r in rows],
-            "taker_side": [r["taker_side"] for r in rows],
-        }
-    )
 
 
 def analyze_market(model, meta, market):

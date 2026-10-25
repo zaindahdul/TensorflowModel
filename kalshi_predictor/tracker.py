@@ -23,9 +23,8 @@ import pandas as pd
 import requests
 
 from . import dataset
-from .fetch_data import fetch_trades, get
+from .kalshi import fetch_trades, get, trades_frame
 from .paths import DATA_DIR
-from .predict import trades_frame
 
 HISTORY = DATA_DIR / "prediction_history.json"
 GRACE_S = 2  # lets trades from the end of the horizon reach the API
