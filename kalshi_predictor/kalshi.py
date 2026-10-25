@@ -87,13 +87,24 @@ def parse_ticker(target):
     return text.split("/")[-1].upper()
 
 
-def open_events(series_ticker):
-    """Open events in a series, with their markets, soonest to close first."""
+def open_events(series_ticker, now=None):
+    """Events in a series still trading at now, with their markets, soonest to close first.
+
+    Kalshi keeps listing an event as open for a while after it closes, so
+    events whose markets have all passed their close time are dropped.
+    """
     found = get_or_none(
         "/events", {"series_ticker": series_ticker, "status": "open", "with_nested_markets": "true"}
     )
-    events = [e for e in (found or {}).get("events", []) if e.get("markets")]
-    return sorted(events, key=lambda e: min(m["close_time"] for m in e["markets"]))
+    now = now or pd.Timestamp.now(tz="UTC")
+
+    def closes(market):
+        return pd.Timestamp(market["close_time"])
+
+    events = [
+        e for e in (found or {}).get("events", []) if any(closes(m) > now for m in e.get("markets") or [])
+    ]
+    return sorted(events, key=lambda e: min(closes(m) for m in e["markets"] if closes(m) > now))
 
 
 def find_markets(target):

@@ -40,10 +40,19 @@ def test_find_markets_returns_every_market_in_an_event(monkeypatch):
 
 
 def test_find_markets_picks_the_next_event_in_a_series(monkeypatch):
-    later = {"event_ticker": "S-LATER", "markets": [{"ticker": "S-LATER-1", "close_time": "2026-10-26T00:00:00Z"}]}
-    sooner = {"event_ticker": "S-SOONER", "markets": [{"ticker": "S-SOONER-1", "close_time": "2026-10-25T23:00:00Z"}]}
+    later = {"event_ticker": "S-LATER", "markets": [{"ticker": "S-LATER-1", "close_time": "2099-10-26T00:00:00Z"}]}
+    sooner = {"event_ticker": "S-SOONER", "markets": [{"ticker": "S-SOONER-1", "close_time": "2099-10-25T23:00:00Z"}]}
     monkeypatch.setattr(kalshi, "get_or_none", fake_api({("/events", "S"): {"events": [later, sooner]}}))
     assert kalshi.find_markets("S") == ("S-SOONER", sooner["markets"])
+
+
+def test_find_markets_skips_events_that_already_closed(monkeypatch):
+    # Kalshi still lists a 15-minute event as open for a moment after it closes.
+    closed = {"event_ticker": "S-1900", "markets": [{"ticker": "S-1900-00", "close_time": "2026-10-25T23:00:00Z"}]}
+    current = {"event_ticker": "S-1915", "markets": [{"ticker": "S-1915-15", "close_time": "2026-10-25T23:15:00Z"}]}
+    monkeypatch.setattr(kalshi, "get_or_none", fake_api({("/events", "S"): {"events": [closed, current]}}))
+    now = kalshi.pd.Timestamp("2026-10-25T23:00:05Z")
+    assert [e["event_ticker"] for e in kalshi.open_events("S", now=now)] == ["S-1915"]
 
 
 def test_find_markets_none_when_nothing_matches(monkeypatch):
