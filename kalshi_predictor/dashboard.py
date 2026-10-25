@@ -195,6 +195,10 @@ class Handler(BaseHTTPRequestHandler):
         }
         if url.path in routes:
             self.answer(routes[url.path])
+        elif url.path == "/api/history.csv":
+            entries = tracker.report(source=query.get("source"),
+                                     since=float(query["since"]) if query.get("since") else None)["entries"]
+            self.send_csv(tracker.to_csv(entries), "kalshi-predictions.csv")
         elif url.path == "/" or url.path.startswith("/static/"):
             self.static(url.path)
         else:
@@ -239,6 +243,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply_json({"error": "not found"}, 404)
         content_type = CONTENT_TYPES.get(file.suffix, "application/octet-stream")
         self.reply(200, content_type, file.read_bytes())
+
+    def send_csv(self, text, filename):
+        data = text.encode("utf-8-sig")  # the BOM makes Excel read it as UTF-8
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def reply_json(self, body, status):
         self.reply(status, "application/json", json.dumps(body).encode())

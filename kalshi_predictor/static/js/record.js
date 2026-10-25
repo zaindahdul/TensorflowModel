@@ -3,7 +3,7 @@ import * as api from "./api.js";
 import { lineChart, timeLabel } from "./chart.js";
 import { outcomeBadge } from "./market.js";
 import { go, state } from "./state.js";
-import { capitalize, cents, dirBadge, el, money, moneyClass, percent, store } from "./util.js";
+import { capitalize, cents, dirBadge, el, icon, money, moneyClass, percent, store } from "./util.js";
 
 export const tab = "record";
 export const sidebar = false;
@@ -43,9 +43,12 @@ export function mount(root) {
       calibrationBox = el("div", "calibration")));
   const table = el("div", "");
   let equity = null;
+  const exportLink = el("a", "btn small", icon("download"), "Export CSV");
+  exportLink.title = "Download every prediction in these filters";
   const filters = el("div", "toolbar",
     segmented(RANGES, () => range, (v) => { range = v; store.set("recordRange", v); load(); }),
-    segmented(SOURCES, () => source, (v) => { source = v; store.set("recordSource", v); load(); }));
+    segmented(SOURCES, () => source, (v) => { source = v; store.set("recordSource", v); load(); }),
+    el("div", "toolbar-end", exportLink));
   page.append(
     el("div", "page-head", el("div", "",
       el("h1", "", "Track record"),
@@ -62,6 +65,9 @@ export function mount(root) {
       const data = await api.get("/api/history", { since: since(range), source: source === "all" ? undefined : source, limit: shown });
       if (!alive) return;
       for (const group of filters.querySelectorAll(".segmented")) group.refresh();
+      const query = new URLSearchParams(Object.entries({ since: since(range), source: source === "all" ? "" : source })
+        .filter(([, v]) => v));
+      exportLink.href = "/api/history.csv" + (query.size ? "?" + query : "");
       renderTiles(tiles, data.summary);
       renderCalibration(calibrationBox, data.calibration);
       const points = equityPoints(data.equity);

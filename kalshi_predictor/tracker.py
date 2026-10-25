@@ -11,6 +11,8 @@ rounded up to the cent. It assumes the whole order fills at the best price.
 in the horizon_s seconds after the last trade the model saw.
 """
 import copy
+import csv
+import io
 import json
 import math
 import os
@@ -258,3 +260,42 @@ def report(ticker=None, source=None, since=None, limit=None):
             "fees": round(sum(t["entry_fee"] + t["exit_fee"] for t in trades), 2),
         },
     }
+
+
+CSV_COLUMNS = [
+    "created", "ticker", "title", "name", "source", "predicted", "p_down", "p_flat", "p_up",
+    "anchor_price", "actual", "price_after", "correct", "side", "contracts", "entry_price",
+    "exit_price", "fees", "pnl", "note",
+]
+
+
+def to_csv(entries):
+    """Entries from report() as CSV text, one row per prediction."""
+    out = io.StringIO()
+    writer = csv.DictWriter(out, CSV_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for e in entries:
+        outcome, trade = e.get("outcome") or {}, e["trade"]
+        writer.writerow(
+            {
+                "created": pd.Timestamp(round(e["created"]), unit="s", tz="UTC").isoformat(),
+                "ticker": e["ticker"],
+                "title": e.get("title", ""),
+                "name": e.get("name", ""),
+                "source": e.get("source", "manual"),
+                "predicted": e["predicted"],
+                **{f"p_{k}": round(e["probs"][k], 4) for k in ("down", "flat", "up")},
+                "anchor_price": round(e["anchor_price"], 4),
+                "actual": outcome.get("actual", ""),
+                "price_after": round(outcome["price"], 4) if "price" in outcome else "",
+                "correct": outcome.get("correct", ""),
+                "side": trade.get("side") or "",
+                "contracts": trade.get("contracts", ""),
+                "entry_price": trade.get("entry_price", ""),
+                "exit_price": trade.get("exit_price", ""),
+                "fees": round(trade["entry_fee"] + trade["exit_fee"], 2) if "exit_fee" in trade else "",
+                "pnl": trade.get("pnl", ""),
+                "note": trade.get("skipped") or trade.get("problem") or trade.get("note") or e.get("error", ""),
+            }
+        )
+    return out.getvalue()

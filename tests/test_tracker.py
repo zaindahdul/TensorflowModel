@@ -143,6 +143,20 @@ def test_calibration_groups_calls_by_confidence():
     assert by_low[0.0]["calls"] == 0 and by_low[0.0]["mean_confidence"] is None
 
 
+def test_to_csv_writes_one_row_per_prediction():
+    entry = tracker.record(
+        META, market(yes_ask_dollars="0.5200"), result({"down": 0.1, "flat": 0.2, "up": 0.7}), 10, 1000.0
+    )
+    entry["outcome"] = {"actual": "up", "price": 0.53, "correct": True}
+    entry["trade"].update(exit_price=0.6, exit_fee=0.17, pnl=0.45)
+    lines = tracker.to_csv([entry]).splitlines()
+    assert lines[0].split(",") == tracker.CSV_COLUMNS
+    row = dict(zip(tracker.CSV_COLUMNS, lines[1].split(",")))
+    assert (row["ticker"], row["predicted"], row["p_up"], row["actual"], row["correct"]) == ("A-1", "up", "0.7", "up", "True")
+    assert (row["side"], row["entry_price"], row["fees"], row["pnl"]) == ("yes", "0.52", "0.35", "0.45")
+    assert row["created"].startswith("1970-01-01T00:16:40")
+
+
 def test_report_totals():
     tracker.history.extend([
         {"ticker": "A", "name": "A", "created": 1, "due": 61, "status": "done", "predicted": "up", "outcome": {"correct": True}, "probs": PROBS,
