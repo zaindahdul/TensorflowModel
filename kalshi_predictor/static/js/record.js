@@ -1,5 +1,6 @@
 // Track record tab: how the paper-traded predictions turned out.
 import * as api from "./api.js";
+import { lineChart, timeLabel } from "./chart.js";
 import { outcomeBadge } from "./market.js";
 import { go, state } from "./state.js";
 import { capitalize, cents, dirBadge, el, money, moneyClass, percent, store } from "./util.js";
@@ -30,7 +31,13 @@ export function mount(root) {
   let shown = PAGE_SIZE;
 
   const tiles = el("div", "stat-tiles");
+  const equityBox = el("div", "chart-box");
+  const charts = el("div", "grid record-charts", el("section", "card",
+    el("div", "card-head", el("div", "", el("h2", "", "Paper profit over time"),
+      el("div", "card-sub", "Running total after each trade closed, fees included"))),
+    equityBox));
   const table = el("div", "");
+  let equity = null;
   const filters = el("div", "toolbar",
     segmented(RANGES, () => range, (v) => { range = v; store.set("recordRange", v); load(); }),
     segmented(SOURCES, () => source, (v) => { source = v; store.set("recordSource", v); load(); }));
@@ -40,7 +47,7 @@ export function mount(root) {
       el("p", "lead", "Every prediction is paper traded with no real money: Up buys Yes and Down buys No at the ask, " +
         "then sells at the bid " + state.info.horizon_s + " seconds later, after Kalshi's fees. Flat calls don't trade. " +
         "A call is right when the price really moved that way within " + state.info.horizon_s + " seconds of the last trade the model saw."))),
-    filters, tiles, table,
+    filters, tiles, charts, table,
   );
 
   async function load() {
@@ -51,6 +58,17 @@ export function mount(root) {
       if (!alive) return;
       for (const group of filters.querySelectorAll(".segmented")) group.refresh();
       renderTiles(tiles, data.summary);
+      const points = equityPoints(data.equity);
+      if (!equity) {
+        equity = lineChart(equityBox, points, {
+          label: "Paper profit over time", height: 200, step: true, zero: true,
+          formatValue: (v) => money(v), formatTime: timeLabel,
+          emptyText: "No closed paper trades yet",
+          tooltipRows: (p) => (p.name ? [["Trade", p.name], ["This trade", money(p.pnl)]] : []),
+        });
+      } else {
+        equity(points);
+      }
       renderTable(table, data, () => { shown += PAGE_SIZE; load(); });
       timer = setTimeout(load, data.summary.pending ? 3000 : 15000);
     } catch (err) {
@@ -65,7 +83,14 @@ export function mount(root) {
   return () => {
     alive = false;
     clearTimeout(timer);
+    equity?.destroy();
   };
+}
+
+// The curve starts from zero just before the first trade closed.
+function equityPoints(equity) {
+  if (!equity.length) return [];
+  return [{ t: equity[0].t - 60, v: 0 }, ...equity.map((p) => ({ ...p, v: p.total }))];
 }
 
 function segmented(choices, current, onPick) {

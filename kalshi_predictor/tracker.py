@@ -214,8 +214,13 @@ def report(ticker=None, source=None, since=None, limit=None):
     checked = [e for e in entries if "outcome" in e]
     move_calls = [e for e in checked if e["predicted"] in ("up", "down")]
     trades = [e["trade"] for e in entries if "pnl" in e["trade"]]
+    total, equity = 0.0, []
+    for e in sorted((e for e in entries if "pnl" in e["trade"]), key=lambda e: e["due"]):
+        total += e["trade"]["pnl"]
+        equity.append({"t": e["due"], "pnl": e["trade"]["pnl"], "total": round(total, 2), "name": e["name"]})
     return {
         "entries": entries[::-1][:limit],
+        "equity": equity,  # running paper profit after each trade closed, oldest first
         "summary": {
             "predictions": len(entries),
             "pending": sum(e["status"] == "pending" for e in entries),

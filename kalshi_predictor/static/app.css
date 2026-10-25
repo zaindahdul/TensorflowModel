@@ -479,3 +479,5 @@ table.history .dir { font-size: 11px; padding: 1px 7px; }
 @media (max-width: 900px) {
   .stat-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.record-charts { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); margin-bottom: 16px; align-items: start; }
+.record-charts .chart-box { min-height: 238px; }
