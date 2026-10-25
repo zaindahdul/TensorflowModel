@@ -1,0 +1,20 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      # The tests never load the model, so TensorFlow is not needed here.
+      - run: pip install numpy pandas pyarrow requests pytest
+      - run: python -m pytest -q
+      - name: Check the dashboard scripts parse
+        run: for f in kalshi_predictor/static/js/*.js; do node --check --input-type=module < "$f"; done

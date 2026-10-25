@@ -14,7 +14,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
-from tensorflow import keras
 
 from . import dataset
 from .kalshi import fetch_trades, find_markets, trades_frame
@@ -88,6 +87,8 @@ def analyze_market(model, meta, market):
 
 def load():
     """The trained model's metadata and the model itself."""
+    from tensorflow import keras  # slow to import, so only when a model is needed
+
     meta = json.loads((ARTIFACTS / "meta.json").read_text())
     return meta, keras.models.load_model(ARTIFACTS / "model.keras")
 
