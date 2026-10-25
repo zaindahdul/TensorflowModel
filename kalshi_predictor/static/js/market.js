@@ -63,7 +63,7 @@ async function openTarget(page, target) {
   for (const result of body.results) list.append(resultCard(result));
   page.replaceChildren(
     el("div", "page-head", el("div", "",
-      el("h1", "", body.results[0]?.title || body.ticker),
+      el("h1", "", body.title || body.ticker),
       el("p", "lead", body.results.length + " markets. Pick one to see its chart and order book."))),
     body.note ? el("div", "notice warn", body.note) : null,
     list,

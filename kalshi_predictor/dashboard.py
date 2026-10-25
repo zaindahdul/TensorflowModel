@@ -75,12 +75,18 @@ def predict(target, contracts, source="manual"):
         raise BadRequest("Search for a market, or paste a Kalshi link or ticker.")
     contracts = parse_contracts(contracts)
     ticker, markets = kalshi.find_markets(target)
+    if not markets and not kalshi.parse_ticker(target).startswith("KX"):
+        # Not a ticker or link Kalshi knows, so treat it as a search, e.g. "packers".
+        found = kalshi.search(target, limit=1)
+        if found:
+            ticker, markets = kalshi.find_markets(found[0]["event_ticker"])
     quoted_at = time.time()  # the bids and asks in markets are from now
     if not markets:
-        raise BadRequest(
-            f"Kalshi has no market, event or series called {ticker}. Try searching by name instead.", 404
-        )
-    note = None
+        raise BadRequest(f"Nothing on Kalshi matches {target!r}. Try searching by name.", 404)
+    note, title = None, markets[0].get("title", "")
+    if len(markets) > 1:
+        event = kalshi.get_or_none(f"/events/{markets[0]['event_ticker']}") or {}
+        title = (event.get("event") or {}).get("title") or title
     if len(markets) > MAX_EVENT_MARKETS:
         note = f"Showing the {MAX_EVENT_MARKETS} most traded of {len(markets)} markets in this event."
     markets = tradeable_first(markets)[:MAX_EVENT_MARKETS]
@@ -93,7 +99,7 @@ def predict(target, contracts, source="manual"):
             entry = tracker.record(meta, market, result, contracts, quoted_at, source=source)
             result["paper_trade"] = entry["trade"]
         results.append(jsonable(result))
-    return {"ticker": ticker, "results": results, "note": note}
+    return {"ticker": ticker, "title": title, "results": results, "note": note}
 
 
 def run_scan(markets, contracts, record):

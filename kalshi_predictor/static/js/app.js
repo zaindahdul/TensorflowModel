@@ -1,8 +1,9 @@
 // App shell: theme, the search box, and a hash router that mounts one view at a time.
 import * as api from "./api.js";
 import { icon, store } from "./util.js";
-import { go, openTarget, state } from "./state.js";
+import { go, state } from "./state.js";
 import * as market from "./market.js";
+import * as search from "./search.js";
 import * as sidebar from "./sidebar.js";
 
 // path pattern -> view module; the first match wins.
@@ -51,21 +52,20 @@ function setupTheme() {
   paint();
 }
 
-function setupSearch() {
-  const form = document.getElementById("omni");
-  const input = document.getElementById("omni-input");
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (input.value.trim()) {
-      openTarget(input.value);
-      input.blur();
+function setupShortcuts() {
+  document.addEventListener("keydown", (event) => {
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+    if ((event.key === "/" && !typing) || (event.key.toLowerCase() === "k" && (event.ctrlKey || event.metaKey))) {
+      event.preventDefault();
+      search.focus();
     }
   });
 }
 
 async function start() {
   setupTheme();
-  setupSearch();
+  search.setup(document.getElementById("omni"));
+  setupShortcuts();
   // A link like /?target=TICKER (the bookmarklet uses this) opens that market.
   const preset = new URLSearchParams(location.search).get("target");
   if (preset) {
