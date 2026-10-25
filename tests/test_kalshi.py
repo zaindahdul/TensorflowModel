@@ -85,3 +85,29 @@ def test_search_normalizes_events_and_drops_settled_markets(monkeypatch):
         "ticker": "KXNFLGAME-26OCT25GBDET-GB", "name": "GB Packers", "yes_bid": 0.38, "yes_ask": 0.39,
         "last_price": None, "close_time": "2026-10-27T20:25:00Z", "volume": 99,
     }
+
+
+def test_live_markets_ranks_by_trades_in_the_tape(monkeypatch):
+    def trade(ticker, second, side="yes"):
+        return {"ticker": ticker, "created_time": f"2026-10-25T22:00:{second:02d}Z", "taker_side": side}
+
+    tape = [trade("B-1", 9), trade("A-1", 8, "no"), trade("B-1", 7), trade("KXMVE-X", 6), trade("B-1", 5, "no"), trade("A-1", 2)]
+
+    def get(path, params=None):
+        if path == "/markets/trades":
+            return {"trades": tape, "cursor": ""}
+        assert path == "/markets" and params["tickers"] == "B-1,A-1"
+        return {"markets": [
+            {"ticker": t, "event_ticker": t.split("-")[0], "title": f"{t}?", "yes_bid_dollars": "0.40"}
+            for t in ("A-1", "B-1")
+        ]}
+
+    monkeypatch.setattr(kalshi, "get", get)
+    monkeypatch.setattr(kalshi, "series_info", lambda name: {"category": {"A": "Sports", "B": "Crypto"}[name]})
+    markets, span_s = kalshi.live_markets(limit=5)
+    assert span_s == 7
+    assert [m["ticker"] for m in markets] == ["B-1", "A-1"]
+    b = markets[0]
+    assert (b["trades"], b["category"], b["yes_bid"]) == (3, "Crypto", 0.40)
+    assert b["yes_taker_share"] == 2 / 3
+    assert b["last_trade"].startswith("2026-10-25T22:00:09")

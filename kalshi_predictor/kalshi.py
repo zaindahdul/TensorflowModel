@@ -1,5 +1,8 @@
 """Thin client for Kalshi's public market data API. No API key is needed."""
+import functools
 import time
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import requests
@@ -153,3 +156,89 @@ def search(query, limit=20, category=None):
             }
         )
     return events
+
+
+@functools.lru_cache(maxsize=None)
+def series_info(series_ticker):
+    """A series' metadata (title, category, fee_multiplier, ...). Cached; errors are not."""
+    return get(f"/series/{series_ticker}")["series"]
+
+
+def series_of(market):
+    return market["event_ticker"].split("-")[0]
+
+
+def market_summary(m, category=""):
+    """The fields the dashboard shows for a market from the markets endpoint."""
+    return {
+        "ticker": m["ticker"],
+        "event_ticker": m["event_ticker"],
+        "title": m.get("title", ""),
+        "name": m.get("yes_sub_title") or m.get("title", ""),
+        "category": category,
+        "status": m.get("status", ""),
+        "yes_bid": dollars(m.get("yes_bid_dollars")),
+        "yes_ask": dollars(m.get("yes_ask_dollars")),
+        "last_price": dollars(m.get("last_price_dollars")),
+        "previous_price": dollars(m.get("previous_price_dollars")),
+        "volume_24h": float(m.get("volume_24h_fp") or 0),
+        "open_interest": float(m.get("open_interest_fp") or 0),
+        "close_time": m.get("close_time"),
+    }
+
+
+def categories(markets):
+    """{series ticker: category} for these markets, looked up in parallel."""
+    names = sorted({series_of(m) for m in markets})
+
+    def category(name):
+        try:
+            return series_info(name).get("category", "")
+        except (requests.RequestException, RuntimeError, KeyError):
+            return ""
+
+    with ThreadPoolExecutor(8) as pool:
+        return dict(zip(names, pool.map(category, names)))
+
+
+def live_markets(limit=24, pages=4):
+    """The markets with the most trades on the exchange right now, busiest first.
+
+    Reads the last few pages of the exchange-wide trade tape (a few thousand
+    trades, usually the last 10-30 seconds) and counts trades per market.
+    Returns (markets, seconds of trading the sample covers).
+    """
+    rows, params = [], {"limit": PAGE_SIZE}
+    for _ in range(pages):
+        page = get("/markets/trades", params)
+        rows.extend(r for r in page["trades"] if not is_combo(r["ticker"]))
+        if not page.get("cursor"):
+            break
+        params["cursor"] = page["cursor"]
+    if not rows:
+        return [], 0.0
+    times = pd.to_datetime([r["created_time"] for r in rows], format="ISO8601", utc=True)
+    span_s = (times.max() - times.min()).total_seconds()
+
+    counts, yes_takers, last_seen = Counter(), Counter(), {}
+    for r, ts in zip(rows, times):
+        counts[r["ticker"]] += 1
+        yes_takers[r["ticker"]] += r["taker_side"] == "yes"
+        last_seen[r["ticker"]] = max(last_seen.get(r["ticker"], ts), ts)
+    top = [ticker for ticker, _ in counts.most_common(limit)]
+    found = get("/markets", {"tickers": ",".join(top), "limit": len(top)})["markets"]
+    by_ticker = {m["ticker"]: m for m in found}
+    cats = categories(found)
+    markets = []
+    for ticker in top:
+        if ticker not in by_ticker:
+            continue
+        m = by_ticker[ticker]
+        summary = market_summary(m, cats.get(series_of(m), ""))
+        summary.update(
+            trades=counts[ticker],
+            yes_taker_share=yes_takers[ticker] / counts[ticker],
+            last_trade=last_seen[ticker].isoformat(),
+        )
+        markets.append(summary)
+    return markets, span_s
