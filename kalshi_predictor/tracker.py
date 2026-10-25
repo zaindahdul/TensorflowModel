@@ -23,7 +23,7 @@ import pandas as pd
 import requests
 
 from . import dataset
-from .kalshi import fetch_trades, get, trades_frame
+from .kalshi import fetch_trades, get, series_info, trades_frame
 from .paths import DATA_DIR
 
 HISTORY = DATA_DIR / "prediction_history.json"
@@ -33,7 +33,6 @@ GIVE_UP_S = 600  # stop retrying a check that keeps failing
 
 lock = threading.Lock()  # guards history
 history = json.loads(HISTORY.read_text()) if HISTORY.exists() else []
-fee_multipliers = {}
 
 
 def save():
@@ -45,14 +44,11 @@ def save():
 
 
 def fee_multiplier(event_ticker):
-    series = event_ticker.split("-")[0]
-    if series not in fee_multipliers:
-        try:
-            found = get(f"/series/{series}")["series"].get("fee_multiplier")
-            fee_multipliers[series] = float(found if found is not None else 1)
-        except (requests.RequestException, RuntimeError, KeyError):
-            return 1.0  # not cached, so the next trade tries again
-    return fee_multipliers[series]
+    try:
+        found = series_info(event_ticker.split("-")[0]).get("fee_multiplier")
+    except (requests.RequestException, RuntimeError, KeyError):
+        return 1.0  # failures are not cached, so the next trade tries again
+    return float(found if found is not None else 1)
 
 
 def taker_fee(contracts, price, multiplier):

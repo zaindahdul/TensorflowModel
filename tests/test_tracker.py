@@ -5,6 +5,7 @@ from kalshi_predictor import tracker
 
 META = {"horizon_s": 60, "threshold": 0.01}
 ANCHOR = pd.Timestamp("2026-10-01 12:00", tz="UTC")
+real_fee_multiplier = tracker.fee_multiplier  # before the fixture stubs it out
 
 
 @pytest.fixture(autouse=True)
@@ -125,3 +126,9 @@ def test_report_totals():
     s = tracker.report()["summary"]
     assert (s["predictions"], s["pending"], s["checked"], s["correct"]) == (3, 1, 2, 1)
     assert (s["trades"], s["winning_trades"], s["pnl"], s["fees"]) == (2, 1, 1.0, 0.3)
+
+
+def test_fee_multiplier_comes_from_the_series(monkeypatch):
+    monkeypatch.setattr(tracker, "series_info", lambda name: {"KXA": {"fee_multiplier": 0.5}, "KXB": {}}[name])
+    assert real_fee_multiplier("KXA-26OCT") == 0.5
+    assert real_fee_multiplier("KXB-26OCT") == 1.0
