@@ -6,6 +6,7 @@ from kalshi_predictor import tracker
 META = {"horizon_s": 60, "threshold": 0.01}
 ANCHOR = pd.Timestamp("2026-10-01 12:00", tz="UTC")
 real_fee_multiplier = tracker.fee_multiplier  # before the fixture stubs it out
+PROBS = {"down": 0.3, "flat": 0.3, "up": 0.4}
 
 
 @pytest.fixture(autouse=True)
@@ -130,13 +131,25 @@ def test_report_filters_entries_and_totals():
     assert len(limited["entries"]) == 1 and limited["summary"]["predictions"] == 3
 
 
+def test_calibration_groups_calls_by_confidence():
+    def call(p, correct):
+        return {"predicted": "up", "probs": {"up": p, "flat": 0, "down": 1 - p}, "outcome": {"correct": correct}}
+
+    bands = tracker.calibration([call(0.5, True), call(0.52, False), call(0.9, True)])
+    by_low = {b["low"]: b for b in bands}
+    assert (by_low[0.45]["calls"], by_low[0.45]["right"]) == (2, 1)
+    assert by_low[0.45]["mean_confidence"] == pytest.approx(0.51)
+    assert (by_low[0.75]["calls"], by_low[0.75]["right"], by_low[0.75]["high"]) == (1, 1, 1.0)
+    assert by_low[0.0]["calls"] == 0 and by_low[0.0]["mean_confidence"] is None
+
+
 def test_report_totals():
     tracker.history.extend([
-        {"ticker": "A", "name": "A", "created": 1, "due": 61, "status": "done", "predicted": "up", "outcome": {"correct": True},
+        {"ticker": "A", "name": "A", "created": 1, "due": 61, "status": "done", "predicted": "up", "outcome": {"correct": True}, "probs": PROBS,
          "trade": {"pnl": 1.5, "entry_fee": 0.1, "exit_fee": 0.1}},
-        {"ticker": "A", "name": "A", "created": 2, "due": 62, "status": "done", "predicted": "down", "outcome": {"correct": False},
+        {"ticker": "A", "name": "A", "created": 2, "due": 62, "status": "done", "predicted": "down", "outcome": {"correct": False}, "probs": PROBS,
          "trade": {"pnl": -0.5, "entry_fee": 0.1, "exit_fee": 0.0}},
-        {"ticker": "A", "created": 3, "status": "done", "predicted": "flat", "outcome": {"correct": True}, "trade": {}},
+        {"ticker": "A", "created": 3, "status": "done", "predicted": "flat", "outcome": {"correct": True}, "probs": PROBS, "trade": {}},
         {"ticker": "A", "created": 4, "status": "pending", "predicted": "up", "trade": {}},
     ])
     s = tracker.report()["summary"]

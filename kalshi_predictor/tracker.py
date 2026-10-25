@@ -30,6 +30,8 @@ HISTORY = DATA_DIR / "prediction_history.json"
 GRACE_S = 2  # lets trades from the end of the horizon reach the API
 LATE_S = 30  # past this, the bid we would see is not the one you could have sold at
 GIVE_UP_S = 600  # stop retrying a check that keeps failing
+# Confidence bands for the calibration table: [low, high) of the called class's probability.
+CONFIDENCE_BANDS = [(0.0, 0.45), (0.45, 0.55), (0.55, 0.65), (0.65, 0.75), (0.75, 1.01)]
 
 lock = threading.Lock()  # guards history
 history = json.loads(HISTORY.read_text()) if HISTORY.exists() else []
@@ -196,6 +198,26 @@ def run_forever(interval_s=1.0):
         time.sleep(interval_s)
 
 
+def calibration(checked):
+    """How often calls were right, grouped by how sure the model was of them."""
+    bands = []
+    for low, high in CONFIDENCE_BANDS:
+        sure = [e["probs"][e["predicted"]] for e in checked if low <= e["probs"][e["predicted"]] < high]
+        right = sum(
+            e["outcome"]["correct"] for e in checked if low <= e["probs"][e["predicted"]] < high
+        )
+        bands.append(
+            {
+                "low": low,
+                "high": min(high, 1.0),
+                "calls": len(sure),
+                "right": right,
+                "mean_confidence": sum(sure) / len(sure) if sure else None,
+            }
+        )
+    return bands
+
+
 def report(ticker=None, source=None, since=None, limit=None):
     """History (newest first) and running totals, ready to send as JSON.
 
@@ -221,6 +243,7 @@ def report(ticker=None, source=None, since=None, limit=None):
     return {
         "entries": entries[::-1][:limit],
         "equity": equity,  # running paper profit after each trade closed, oldest first
+        "calibration": calibration(checked),
         "summary": {
             "predictions": len(entries),
             "pending": sum(e["status"] == "pending" for e in entries),

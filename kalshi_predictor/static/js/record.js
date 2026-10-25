@@ -32,10 +32,15 @@ export function mount(root) {
 
   const tiles = el("div", "stat-tiles");
   const equityBox = el("div", "chart-box");
+  let calibrationBox;
   const charts = el("div", "grid record-charts", el("section", "card",
     el("div", "card-head", el("div", "", el("h2", "", "Paper profit over time"),
       el("div", "card-sub", "Running total after each trade closed, fees included"))),
-    equityBox));
+    equityBox),
+    el("section", "card",
+      el("div", "card-head", el("div", "", el("h2", "", "Is the model as sure as it says?"),
+        el("div", "card-sub", "How often calls were right, by how confident the model was"))),
+      calibrationBox = el("div", "calibration")));
   const table = el("div", "");
   let equity = null;
   const filters = el("div", "toolbar",
@@ -58,6 +63,7 @@ export function mount(root) {
       if (!alive) return;
       for (const group of filters.querySelectorAll(".segmented")) group.refresh();
       renderTiles(tiles, data.summary);
+      renderCalibration(calibrationBox, data.calibration);
       const points = equityPoints(data.equity);
       if (!equity) {
         equity = lineChart(equityBox, points, {
@@ -107,6 +113,32 @@ function segmented(choices, current, onPick) {
   };
   box.refresh();
   return box;
+}
+
+// One row per confidence band: a bar for how often calls were right, with a
+// tick where it would be if the model were exactly as sure as it said.
+function renderCalibration(box, bands) {
+  const rows = bands.filter((b) => b.calls).map((b) => {
+    const label = b.low === 0 ? "under " + percent(b.high) : b.high >= 1 ? percent(b.low) + "+" : percent(b.low) + "–" + percent(b.high);
+    const rate = b.right / b.calls;
+    const fill = el("div", "cal-fill");
+    fill.style.width = percent(rate, 1);
+    const tick = el("div", "cal-tick");
+    tick.style.left = percent(b.mean_confidence, 1);
+    return el("div", "cal-row",
+      el("span", "cal-label", label + " sure"),
+      el("div", "cal-track", fill, tick),
+      el("span", "cal-value num", el("strong", "", percent(rate)), el("span", "muted", " of " + b.calls)));
+  });
+  if (!rows.length) {
+    box.replaceChildren(el("div", "empty", "Nothing checked yet."));
+    return;
+  }
+  box.replaceChildren(
+    ...rows,
+    el("div", "cal-key", el("span", "key-bar"), "share of calls that were right", el("span", "key-tick"),
+      "how sure the model was, on average"),
+  );
 }
 
 function tile(label, value, valueClass, sub) {
