@@ -98,6 +98,7 @@ def predict(target, contracts, source="manual"):
         if "probs" in result:
             entry = tracker.record(meta, market, result, contracts, quoted_at, source=source)
             result["paper_trade"] = entry["trade"]
+            result["entry_id"] = entry["id"]
         results.append(jsonable(result))
     return {"ticker": ticker, "title": title, "results": results, "note": note}
 
@@ -182,7 +183,12 @@ class Handler(BaseHTTPRequestHandler):
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         routes = {
             "/api/info": model_info,
-            "/api/history": tracker.report,
+            "/api/history": lambda: tracker.report(
+                ticker=query.get("ticker"),
+                source=query.get("source"),
+                since=float(query["since"]) if query.get("since") else None,
+                limit=int(query["limit"]) if query.get("limit") else None,
+            ),
             "/api/live": lambda: live(int(query.get("limit", 24))),
             "/api/search": lambda: {"events": kalshi.search(query.get("q", ""), 20, query.get("category"))},
             "/api/market": lambda: market_detail(query.get("ticker", ""), query.get("span", "6h")),

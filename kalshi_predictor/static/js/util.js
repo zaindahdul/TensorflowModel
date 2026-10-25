@@ -33,6 +33,7 @@ const ICONS = {
   bolt: "M13 2L3 14h9l-1 8 10-12h-9z",
   download: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3",
   x: "M18 6L6 18M6 6l12 12",
+  check: "M20 6L9 17l-5-5",
 };
 
 export function icon(name, extraClass = "") {

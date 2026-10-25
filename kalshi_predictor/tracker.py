@@ -196,14 +196,25 @@ def run_forever(interval_s=1.0):
         time.sleep(interval_s)
 
 
-def report():
-    """History (newest first) and running totals, ready to send as JSON."""
+def report(ticker=None, source=None, since=None, limit=None):
+    """History (newest first) and running totals, ready to send as JSON.
+
+    Only entries for this ticker, from this source ("manual" or "scan") and
+    created at or after since (Unix seconds) count; limit caps how many
+    entries are returned, not what the totals cover.
+    """
     with lock:
-        entries = copy.deepcopy(history)
+        entries = [
+            copy.deepcopy(e)
+            for e in history
+            if (ticker is None or e["ticker"] == ticker)
+            and (source is None or e.get("source", "manual") == source)
+            and (since is None or e["created"] >= since)
+        ]
     checked = [e for e in entries if "outcome" in e]
     trades = [e["trade"] for e in entries if "pnl" in e["trade"]]
     return {
-        "entries": entries[::-1],
+        "entries": entries[::-1][:limit],
         "summary": {
             "predictions": len(entries),
             "pending": sum(e["status"] == "pending" for e in entries),

@@ -117,6 +117,19 @@ def test_late_trades_are_not_sold():
     assert "closed" in trade["problem"]
 
 
+def test_report_filters_entries_and_totals():
+    tracker.history.extend([
+        {"ticker": "A-1", "source": "manual", "created": 10, "status": "pending", "trade": {}},
+        {"ticker": "A-1", "source": "scan", "created": 20, "status": "pending", "trade": {}},
+        {"ticker": "B-1", "created": 30, "status": "pending", "trade": {}},  # older entries have no source
+    ])
+    assert tracker.report(ticker="A-1")["summary"]["predictions"] == 2
+    assert [e["created"] for e in tracker.report(source="manual")["entries"]] == [30, 10]
+    assert tracker.report(since=20)["summary"]["predictions"] == 2
+    limited = tracker.report(limit=1)
+    assert len(limited["entries"]) == 1 and limited["summary"]["predictions"] == 3
+
+
 def test_report_totals():
     tracker.history.extend([
         {"status": "done", "outcome": {"correct": True}, "trade": {"pnl": 1.5, "entry_fee": 0.1, "exit_fee": 0.1}},

@@ -425,3 +425,16 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
 
 .rules summary { cursor: pointer; font-weight: 650; }
 .rules p { margin: 10px 0 0; color: var(--ink-2); }
+
+/* ---------- calls on a market ---------- */
+
+.auto-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--grid); }
+.calls { display: grid; }
+.call { display: grid; grid-template-columns: 74px auto minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 7px 0; border-top: 1px solid var(--grid); font-size: 12px; }
+.call:first-child { border-top: 0; }
+.call-result { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.call .dir { font-size: 11px; padding: 1px 7px; }
+.verdict-badge { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; flex: none; }
+.verdict-badge svg { width: 11px; height: 11px; stroke-width: 3.5; }
+.verdict-badge.right { background: #0ca30c; color: #fff; }
+.verdict-badge.wrong { background: #d03b3b; color: #fff; }

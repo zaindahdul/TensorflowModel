@@ -3,7 +3,7 @@ import * as api from "./api.js";
 import { go, setContracts, state } from "./state.js";
 import { lineChart, timeLabel } from "./chart.js";
 import {
-  best, capitalize, cents, compact, copyText, dirBadge, el, icon, percent, store, toast, untilText,
+  best, capitalize, cents, compact, copyText, dirBadge, el, icon, money, moneyClass, percent, store, toast, untilText,
 } from "./util.js";
 
 export const tab = "market";
@@ -126,14 +126,23 @@ function marketPage(page, ticker) {
   const rulesBox = el("div", "");
   main.append(quotes, chartCard, el("div", "grid two-up", bookBox, siblingsBox), rulesBox);
   const panel = el("div", "card prediction");
-  side.append(panel);
+  const calls = el("div", "");
+  side.append(panel, calls);
 
   let alive = true;
   let span = store.get("span", "6h");
   let detail = null;
   let chart = null;
   let refreshTimer = null;
-  const clock = setInterval(() => { if (detail) renderCountdown(head, detail.market); }, 1000);
+  let callsTimer = null;
+  let autoTimer = null;
+  let autoAt = 0; // when the next automatic prediction runs
+  let auto = store.get("autoPredict", false);
+  const clock = setInterval(() => {
+    if (detail) renderCountdown(head, detail.market);
+    const left = panel.querySelector(".auto-left");
+    if (left) left.textContent = auto && autoAt ? "next in " + Math.max(0, Math.ceil((autoAt - Date.now()) / 1000)) + "s" : "";
+  }, 1000);
 
   for (const name of state.info.history_spans || ["1h", "6h", "1d", "1w"]) {
     const b = el("button", "", name.toUpperCase());
@@ -185,16 +194,49 @@ function marketPage(page, ticker) {
   }
 
   async function run(result) {
+    clearTimeout(autoTimer);
+    autoAt = 0;
     panel.classList.add("loading");
     try {
       result = result || (await predict(ticker)).results[0];
       if (!alive) return;
       if (!detail) renderHead(head, { ticker, title: result.title, name: result.name });
-      renderPrediction(panel, result, () => run());
+      renderPrediction(panel, result, { again: () => run(), auto, setAuto });
+      loadCalls();
     } catch (err) {
       if (alive) panel.replaceChildren(el("div", "notice error", err.message));
     } finally {
       panel.classList.remove("loading");
+      if (alive && auto) scheduleAuto();
+    }
+  }
+
+  function scheduleAuto() {
+    clearTimeout(autoTimer);
+    autoAt = Date.now() + state.info.horizon_s * 1000;
+    autoTimer = setTimeout(() => run(), state.info.horizon_s * 1000);
+  }
+
+  function setAuto(on) {
+    auto = on;
+    store.set("autoPredict", on);
+    if (on) scheduleAuto();
+    else {
+      clearTimeout(autoTimer);
+      autoAt = 0;
+    }
+  }
+
+  // This market's past predictions; polled while any is still being checked.
+  async function loadCalls() {
+    clearTimeout(callsTimer);
+    try {
+      const data = await api.get("/api/history", { ticker, limit: 8 });
+      if (!alive) return;
+      renderCalls(calls, data);
+      if (data.summary.pending) callsTimer = setTimeout(loadCalls, 2000);
+    } catch (err) {
+      // the panel above already shows connection problems
     }
   }
 
@@ -205,6 +247,8 @@ function marketPage(page, ticker) {
   teardown = () => {
     alive = false;
     clearTimeout(refreshTimer);
+    clearTimeout(callsTimer);
+    clearTimeout(autoTimer);
     clearInterval(clock);
     chart?.destroy();
   };
@@ -304,7 +348,7 @@ function renderQuotes(box, m) {
   );
 }
 
-function renderPrediction(panel, result, again) {
+function renderPrediction(panel, result, { again, auto, setAuto }) {
   const horizon = state.info.horizon_s;
   const size = el("input", "field");
   Object.assign(size, { type: "number", min: 1, max: 100000, step: 1, value: state.contracts });
@@ -342,6 +386,51 @@ function renderPrediction(panel, result, again) {
           cents(t.entry_price) + " (fee $" + t.entry_fee.toFixed(2) + "), selling at the bid in " + horizon + "s."));
     }
   }
-  parts.push(el("div", "predict-row", button, el("label", "size-label", size, " contracts")));
+  const toggle = el("input");
+  toggle.type = "checkbox";
+  toggle.checked = auto;
+  toggle.addEventListener("change", () => setAuto(toggle.checked));
+  parts.push(
+    el("div", "predict-row", button, el("label", "size-label", size, " contracts")),
+    el("div", "auto-row", el("label", "switch", toggle, "Predict again every " + horizon + "s"), el("span", "auto-left muted num")),
+  );
   panel.replaceChildren(...parts);
+}
+
+export function outcomeBadge(correct) {
+  const badge = el("span", "verdict-badge " + (correct ? "right" : "wrong"), icon(correct ? "check" : "x"));
+  badge.title = correct ? "Right" : "Wrong";
+  badge.setAttribute("role", "img");
+  badge.setAttribute("aria-label", badge.title);
+  return badge;
+}
+
+function renderCalls(box, data) {
+  const s = data.summary;
+  if (!s.predictions) {
+    box.replaceChildren();
+    return;
+  }
+  const rows = data.entries.map((e) => {
+    let result;
+    if (e.outcome) {
+      result = el("span", "call-result", el("span", "muted", "→"), dirBadge(e.outcome.actual), outcomeBadge(e.outcome.correct));
+    } else if (e.error) {
+      result = el("span", "muted", "could not check");
+    } else {
+      const wait = Math.max(0, Math.ceil(e.due - Date.now() / 1000));
+      result = el("span", "muted", el("span", "spinner"), wait > 0 ? " checking in " + wait + "s" : " checking now");
+    }
+    const pnl = e.trade.pnl;
+    return el("div", "call",
+      el("span", "muted num", new Date(e.created * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })),
+      dirBadge(e.predicted),
+      result,
+      el("span", "num " + (pnl === undefined ? "muted" : moneyClass(pnl)), pnl === undefined ? "" : money(pnl)));
+  });
+  const parts = [s.correct + " of " + s.checked + " right"];
+  if (s.trades) parts.push(money(s.pnl) + " paper P&L");
+  box.replaceChildren(el("section", "card",
+    el("div", "card-head", el("h2", "", "Calls on this market"), el("span", "card-sub", s.checked ? parts.join(" \u00b7 ") : "")),
+    el("div", "calls", ...rows)));
 }
