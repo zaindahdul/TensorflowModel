@@ -242,3 +242,49 @@ def live_markets(limit=24, pages=4):
         )
         markets.append(summary)
     return markets, span_s
+
+
+def orderbook(ticker, depth=8):
+    """Resting bids for Yes and No as [price, contracts] pairs, best first.
+
+    Kalshi only lists bids: a No bid at p is also an offer to sell Yes at 1 - p.
+    """
+    book = get(f"/markets/{ticker}/orderbook", {"depth": depth}).get("orderbook_fp") or {}
+
+    def levels(side):
+        return sorted(([float(p), float(q)] for p, q in book.get(side) or []), reverse=True)
+
+    return {"yes": levels("yes_dollars"), "no": levels("no_dollars")}
+
+
+# Range name -> (seconds of history, candle length in minutes). Kalshi returns
+# at most 5000 candles and only offers 1, 60 and 1440 minute candles.
+HISTORY_RANGES = {"1h": (3600, 1), "6h": (6 * 3600, 1), "1d": (86400, 1), "1w": (7 * 86400, 60)}
+
+
+def price_history(ticker, event_ticker, span="6h"):
+    """Candles as {t, price, yes_bid, yes_ask, volume}, oldest first.
+
+    Candles only exist for periods where something changed. price is the last
+    traded price, carried forward through candles without trades.
+    """
+    seconds, minutes = HISTORY_RANGES[span]
+    end = int(time.time())
+    found = get(
+        f"/series/{event_ticker.split('-')[0]}/markets/{ticker}/candlesticks",
+        {"start_ts": end - seconds, "end_ts": end, "period_interval": minutes},
+    )
+    candles, last = [], None
+    for c in found.get("candlesticks", []):
+        price = c.get("price") or {}
+        last = dollars(price.get("close_dollars")) or dollars(price.get("previous_dollars")) or last
+        candles.append(
+            {
+                "t": c["end_period_ts"],
+                "price": last,
+                "yes_bid": dollars((c.get("yes_bid") or {}).get("close_dollars")),
+                "yes_ask": dollars((c.get("yes_ask") or {}).get("close_dollars")),
+                "volume": float(c.get("volume_fp") or 0),
+            }
+        )
+    return candles

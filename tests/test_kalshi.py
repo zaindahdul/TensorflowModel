@@ -111,3 +111,31 @@ def test_live_markets_ranks_by_trades_in_the_tape(monkeypatch):
     assert (b["trades"], b["category"], b["yes_bid"]) == (3, "Crypto", 0.40)
     assert b["yes_taker_share"] == 2 / 3
     assert b["last_trade"].startswith("2026-10-25T22:00:09")
+
+
+def test_orderbook_lists_best_bids_first(monkeypatch):
+    body = {"orderbook_fp": {"yes_dollars": [["0.82", "10.00"], ["0.86", "70.00"]], "no_dollars": None}}
+    monkeypatch.setattr(kalshi, "get", lambda path, params=None: body)
+    assert kalshi.orderbook("A-1") == {"yes": [[0.86, 70.0], [0.82, 10.0]], "no": []}
+
+
+def test_price_history_carries_the_last_price_forward(monkeypatch):
+    body = {"candlesticks": [
+        {"end_period_ts": 60, "price": {"close_dollars": "0.4000"}, "volume_fp": "5.00",
+         "yes_bid": {"close_dollars": "0.3900"}, "yes_ask": {"close_dollars": "0.4100"}},
+        {"end_period_ts": 120, "price": {"previous_dollars": "0.4000"}, "volume_fp": "0.00",
+         "yes_bid": {"close_dollars": "0.3800"}, "yes_ask": {"close_dollars": "0.4100"}},
+        {"end_period_ts": 180, "price": {}, "yes_bid": {}, "yes_ask": {}},
+    ]}
+    seen = {}
+
+    def get(path, params=None):
+        seen.update(path=path, interval=params["period_interval"])
+        return body
+
+    monkeypatch.setattr(kalshi, "get", get)
+    candles = kalshi.price_history("KXA-26OCT-1", "KXA-26OCT", span="1w")
+    assert seen == {"path": "/series/KXA/markets/KXA-26OCT-1/candlesticks", "interval": 60}
+    assert [c["price"] for c in candles] == [0.40, 0.40, 0.40]
+    assert candles[1] == {"t": 120, "price": 0.40, "yes_bid": 0.38, "yes_ask": 0.41, "volume": 0.0}
+    assert candles[2]["yes_bid"] is None
