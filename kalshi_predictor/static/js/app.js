@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { icon, store } from "./util.js";
 import { go, openTarget, state } from "./state.js";
 import * as market from "./market.js";
+import * as sidebar from "./sidebar.js";
 
 // path pattern -> view module; the first match wins.
 const routes = [
@@ -77,6 +78,7 @@ async function start() {
   }
   window.addEventListener("hashchange", route);
   route();
+  sidebar.setup(document.getElementById("sidebar"));
 }
 
 start();

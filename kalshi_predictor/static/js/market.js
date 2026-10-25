@@ -4,7 +4,7 @@ import { go, setContracts, state } from "./state.js";
 import { best, capitalize, cents, copyText, dirBadge, el, icon, percent, toast } from "./util.js";
 
 export const tab = "market";
-export const sidebar = false;
+export const sidebar = true;
 
 // Predictions made while opening a link, handed to the market page so it does
 // not predict (and paper trade) the same market twice.

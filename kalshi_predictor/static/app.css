@@ -311,3 +311,40 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
 @media (max-width: 1100px) {
   .market-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* ---------- live sidebar ---------- */
+
+.sidebar {
+  position: sticky; top: 60px; height: calc(100vh - 60px); overflow-y: auto;
+  padding: 18px 14px 24px; border-right: 1px solid var(--border);
+  transition: opacity .2s;
+}
+.sidebar.loading { opacity: 1; }
+.sidebar.loading .live-list { opacity: 0.7; }
+.side-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.side-head h2 { display: flex; align-items: center; gap: 8px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--up); box-shadow: 0 0 0 0 var(--up-wash); animation: pulse 2s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--up-wash); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.side-chips { margin: 14px 4px 10px; }
+.live-list { display: grid; gap: 2px; transition: opacity .2s; }
+.live-item {
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px;
+  padding: 10px 10px 12px; border-radius: var(--radius-sm); text-decoration: none;
+}
+.live-item:hover { background: var(--surface-2); }
+.live-item.active { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.live-title { font-weight: 600; font-size: 13px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.live-name { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; }
+.live-side { display: grid; justify-items: end; align-content: start; gap: 6px; }
+.live-price { font-weight: 700; font-size: 15px; }
+.flow { display: flex; gap: 2px; width: 44px; height: 4px; }
+.flow span { border-radius: 2px; min-width: 2px; }
+.flow-yes { background: var(--up); }
+.flow-no { background: var(--down); }
+.heat-track { grid-column: 1 / -1; height: 2px; background: var(--surface-2); border-radius: 1px; }
+.heat { height: 100%; background: var(--ink-2); border-radius: 1px; opacity: 0.5; }
+.flow-legend { display: flex; align-items: center; gap: 6px; margin: 0 4px 8px; font-size: 11px; color: var(--ink-2); }
+.flow-legend .key { width: 12px; height: 4px; border-radius: 2px; }
+.flow-legend .key.yes { background: var(--up); }
+.flow-legend .key.no { background: var(--down); margin-left: 6px; }
