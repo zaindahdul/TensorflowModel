@@ -1,10 +1,8 @@
 """Turn raw Kalshi trades into (window of recent trades) -> (future price move) samples."""
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
-DATA_DIR = Path(__file__).parent / "data"
+from .paths import DATA_DIR
 
 WINDOW = 50  # trade events per sample
 HORIZON_S = 60  # how far ahead the label looks, in seconds

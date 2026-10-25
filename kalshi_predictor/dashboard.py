@@ -1,6 +1,6 @@
 """Local web dashboard for predict.py: paste a Kalshi market, see the prediction.
 
-    python dashboard.py
+    python -m kalshi_predictor.dashboard
 
 Opens http://127.0.0.1:8765 in your browser. Only this computer can reach it.
 """
@@ -19,9 +19,9 @@ os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 import requests
 from tensorflow import keras
 
-import tracker
-from predict import analyze_market, find_markets
-from train import ARTIFACTS
+from . import tracker
+from .paths import ARTIFACTS
+from .predict import analyze_market, find_markets
 
 PAGE = Path(__file__).parent / "dashboard.html"
 HOST = "127.0.0.1"

@@ -1,3 +1,5 @@
 @echo off
+setlocal
 set TF_CPP_MIN_LOG_LEVEL=2
-"%~dp0.venv\Scripts\python.exe" "%~dp0dashboard.py" %*
+set "PYTHONPATH=%~dp0"
+"%~dp0.venv\Scripts\python.exe" -m kalshi_predictor.dashboard %*

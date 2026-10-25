@@ -3,8 +3,8 @@
 Accepts a market ticker, an event ticker (predicts every market in the event),
 or a kalshi.com link / the end of one:
 
-    python predict.py KXBTC15M-26OCT092030-30
-    python predict.py https://kalshi.com/markets/kxncaafgame/college-football-game/kxncaafgame-26oct10vtcal
+    python -m kalshi_predictor.predict KXBTC15M-26OCT092030-30
+    python -m kalshi_predictor.predict https://kalshi.com/markets/kxncaafgame/college-football-game/kxncaafgame-26oct10vtcal
 """
 import argparse
 import json
@@ -14,9 +14,9 @@ import pandas as pd
 import requests
 from tensorflow import keras
 
-import dataset
-from fetch_data import fetch_trades, get
-from train import ARTIFACTS
+from . import dataset
+from .fetch_data import fetch_trades, get
+from .paths import ARTIFACTS
 
 
 def get_or_none(path):

@@ -18,16 +18,16 @@ import threading
 import time
 import traceback
 import uuid
-from pathlib import Path
 
 import pandas as pd
 import requests
 
-import dataset
-from fetch_data import fetch_trades, get
-from predict import trades_frame
+from . import dataset
+from .fetch_data import fetch_trades, get
+from .paths import DATA_DIR
+from .predict import trades_frame
 
-HISTORY = Path(__file__).parent / "data" / "prediction_history.json"
+HISTORY = DATA_DIR / "prediction_history.json"
 GRACE_S = 2  # lets trades from the end of the horizon reach the API
 LATE_S = 30  # past this, the bid we would see is not the one you could have sold at
 GIVE_UP_S = 600  # stop retrying a check that keeps failing

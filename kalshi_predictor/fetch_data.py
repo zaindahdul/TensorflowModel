@@ -2,18 +2,18 @@
 
 No API key is needed: trades and market metadata are public endpoints.
 
-    python fetch_data.py --markets 400 --max-pages 5
+    python -m kalshi_predictor.fetch_data --markets 400 --max-pages 5
 """
 import argparse
 import time
 from collections import Counter
-from pathlib import Path
 
 import pandas as pd
 import requests
 
+from .paths import DATA_DIR
+
 BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
-DATA_DIR = Path(__file__).parent / "data"
 PAGE_SIZE = 1000
 
 session = requests.Session()

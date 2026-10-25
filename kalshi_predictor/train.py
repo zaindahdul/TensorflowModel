@@ -1,18 +1,16 @@
 """Train a model that predicts the short-term direction of a Kalshi market's price.
 
-    python train.py
+    python -m kalshi_predictor.train
 """
 import argparse
 import json
-from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 
-import dataset
-
-ARTIFACTS = Path(__file__).parent / "artifacts"
+from . import dataset
+from .paths import ARTIFACTS
 
 
 def build_model(train_x):
