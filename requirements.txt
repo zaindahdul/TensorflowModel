@@ -2,3 +2,6 @@ tensorflow>=2.20
 pandas
 pyarrow
 requests
+
+# for running the tests
+pytest>=8

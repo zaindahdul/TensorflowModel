@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kalshi-predictor"
+version = "0.2.0"
+description = "A neural network that predicts the next-minute price direction of Kalshi markets, with a live dashboard."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "tensorflow>=2.20",
+    "pandas",
+    "pyarrow",
+    "requests",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+kalshi-predictor = "kalshi_predictor.__main__:main"
+
+[tool.setuptools]
+packages = ["kalshi_predictor"]
+
+[tool.setuptools.package-data]
+kalshi_predictor = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
