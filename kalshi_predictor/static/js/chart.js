@@ -8,7 +8,8 @@ function niceStep(span, target) {
   const raw = span / target;
   const mag = 10 ** Math.floor(Math.log10(raw));
   const norm = raw / mag;
-  return (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  // The nearest of 1, 2, 5 or 10 on a log scale, so the tick count stays near target.
+  return (norm < 1.41 ? 1 : norm < 3.16 ? 2 : norm < 7.07 ? 5 : 10) * mag;
 }
 
 function ticks(lo, hi, target) {

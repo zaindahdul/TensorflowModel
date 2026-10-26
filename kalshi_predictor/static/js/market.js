@@ -192,6 +192,11 @@ function marketPage(page, ticker) {
       renderSiblings(siblingsBox, detail.event, ticker);
       renderRules(rulesBox, detail.market);
       const points = detail.history.filter((c) => c.price !== null).map((c) => ({ ...c, v: c.price }));
+      const m = detail.market;
+      // Candles only cover finished minutes, so end the line at the live price.
+      if (points.length && m.last_price !== null) {
+        points.push({ t: Date.now() / 1000, v: m.last_price, yes_bid: m.yes_bid, yes_ask: m.yes_ask, live: true });
+      }
       if (!chart) {
         chart = lineChart(chartBox, points, {
           label: "Yes price over the last " + span,
@@ -201,7 +206,7 @@ function marketPage(page, ticker) {
           emptyText: "No trades in this range",
           tooltipRows: (p) => [
             ["Yes bid / ask", cents(p.yes_bid) + " / " + cents(p.yes_ask)],
-            ["Contracts traded", compact(p.volume)],
+            p.live ? ["Latest", "live quote"] : ["Contracts traded", compact(p.volume)],
           ],
         });
       } else {
