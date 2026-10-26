@@ -25,7 +25,7 @@ kalshi-predictor = "kalshi_predictor.__main__:main"
 packages = ["kalshi_predictor"]
 
 [tool.setuptools.package-data]
-kalshi_predictor = ["static/*"]
+kalshi_predictor = ["static/*", "static/js/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
